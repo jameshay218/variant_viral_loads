@@ -207,8 +207,7 @@ f(virosolver_pars$values)
 ########################################
 ## Run for each chain
 chains <- NULL
-res <- foreach(j=1:nchains,.packages = c("extraDistr","tidyverse","patchwork")) %dopar% {
-  devtools::load_all(paste0(HOME_WD,"/virosolver"))
+res <- foreach(j=1:nchains,.packages = c("extraDistr","tidyverse","patchwork","virosolver")) %dopar% {
   devtools::load_all(paste0(HOME_WD,"/lazymcmc"))
   
   startTab <- rep(list(virosolver_pars),n_temperatures)
