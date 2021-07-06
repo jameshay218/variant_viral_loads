@@ -48,11 +48,11 @@ control_table <- expand.grid(repeat_no=1:100,samp_size=c(25,50,100,250,500))
 control_table$run_name <- 1:nrow(control_table)
 
 n_temperatures <- 10
-mcmcPars_ct_pt <- list("iterations"=5000,"popt"=0.234,"opt_freq"=1000,
-                       "thin"=1,"adaptive_period"=5000,"save_block"=1000,
+mcmcPars_ct_pt <- list("iterations"=50000,"popt"=0.234,"opt_freq"=1000,
+                       "thin"=250,"adaptive_period"=50000,"save_block"=1000,
                        "temperature" = seq(1,101,length.out=n_temperatures),
-                       "parallel_tempering_iter" = 5,"max_adaptive_period" = 5000, 
-                       "adaptiveLeeway" = 0.2, "max_total_iterations" = 5000)
+                       "parallel_tempering_iter" = 5,"max_adaptive_period" = 50000, 
+                       "adaptiveLeeway" = 0.2, "max_total_iterations" = 50000)
 
 nchains <- 3
 n_samp <- 100 ## Number of posterior samples for plots
