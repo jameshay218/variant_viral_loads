@@ -78,6 +78,8 @@ dir.create(paste0(chainwd,"/",runname_use),recursive = TRUE)
 ########################################
 ## 2. SEIR simulation
 ########################################
+samp_time <- 50
+
 ## SEIR parameters
 pars <- c(sigma1.val = 0,#1/(45*7*2), ## Immune waning to strain 1
           sigma2.val = 0,#1/(45*7*2), ## Immune waning to strain 2
@@ -139,7 +141,6 @@ vl_pars_both <- vl_pars
 vl_pars_both["t_switch"] <- vl_pars_both["t_switch"] + 5
 vl_pars_both["viral_peak"] <- vl_pars_both["viral_peak"] - 5
 
-samp_time <- 50
 vl_pars1 <- vl_pars
 vl_pars2 <- vl_pars_both
 cts_1 <- tibble(ct=simulate_cross_section(vl_pars1, ages, virus1_inc,obs_time=samp_time,N=samp_size),variant="Original variant")
