@@ -13,19 +13,19 @@ setwd(HOME_WD)
 devtools::load_all(paste0(HOME_WD,"/lazymcmc"))
 
 ## Load functions for line list simulation
-source(paste0(HOME_WD,"/variant_viral_loads/code/linelist_sim_funcs.R"))
-source(paste0(HOME_WD,"/variant_viral_loads/code/plotting.R"))
-source(paste0(HOME_WD,"/variant_viral_loads/code/seir_funcs.R"))
-source(paste0(HOME_WD,"/variant_viral_loads/code/analysis_funcs.R"))
-source(paste0(HOME_WD,"/variant_viral_loads/code/invasion_rates_KISSLER2020.R"))
-source(paste0(HOME_WD,"/variant_viral_loads/code/simulate_symptomatic_population.R"))
+source(paste0(HOME_WD,"variant_viral_loads/code/linelist_sim_funcs.R"))
+source(paste0(HOME_WD,"variant_viral_loads/code/plotting.R"))
+source(paste0(HOME_WD,"variant_viral_loads/code/seir_funcs.R"))
+source(paste0(HOME_WD,"variant_viral_loads/code/analysis_funcs.R"))
+source(paste0(HOME_WD,"variant_viral_loads/code/invasion_rates_KISSLER2020.R"))
+source(paste0(HOME_WD,"variant_viral_loads/code/simulate_symptomatic_population.R"))
 
 ## Creating and Setting Directories:
 main_wd <- paste0(HOME_WD,"/variant_viral_loads/")
-chainwd <- paste0(HOME_WD, "/variant_viral_loads/mcmc_chains/virosolver_diff_directions")
-plot_wd <- paste0(HOME_WD, "/variant_viral_loads/plots/virosolver_diff_directions")
-data_wd <- paste0(HOME_WD, "/variant_viral_loads/data/virosolver_diff_directions")
-results_wd <- paste0(HOME_WD, "/variant_viral_loads/results/virosolver_diff_directions")
+chainwd <- paste0(HOME_WD, "/variant_viral_loads/mcmc_chains/virosolver_late")
+plot_wd <- paste0(HOME_WD, "/variant_viral_loads/plots/virosolver_late")
+data_wd <- paste0(HOME_WD, "/variant_viral_loads/data/virosolver_late")
+results_wd <- paste0(HOME_WD, "/variant_viral_loads/results/virosolver_late")
 
 if(!file.exists(chainwd)) dir.create(chainwd,recursive = TRUE)
 if(!file.exists(plot_wd)) dir.create(plot_wd,recursive = TRUE)
@@ -92,7 +92,7 @@ pars <- c(sigma1.val = 0,#1/(45*7*2), ## Immune waning to strain 1
           beta.val2=2.5/7, ## Transmission rate of strain 2 (R0*gamma)
           kappa.val = 1/100000, ## Daily importation rate of infected individuals
           importtime1 = 0, ## Time of importation of strain 1
-          importtime2 = 0, ## Time of importation of strain 2
+          importtime2 = 180, ## Time of importation of strain 2
           importlength = 7) ## Duration of importations
 
 states <- c(S1S2 = 1,E1S2 = 0,S1E2 = 0,E1E2 = 0,I1S2 = 0, 
@@ -139,7 +139,7 @@ vl_pars_both <- vl_pars
 vl_pars_both["t_switch"] <- vl_pars_both["t_switch"] + 5
 vl_pars_both["viral_peak"] <- vl_pars_both["viral_peak"] - 5
 
-samp_time <- 50
+samp_time <- 270
 vl_pars1 <- vl_pars
 vl_pars2 <- vl_pars_both
 cts_1 <- tibble(ct=simulate_cross_section(vl_pars1, ages, virus1_inc,obs_time=samp_time,N=samp_size),variant="Original variant")
