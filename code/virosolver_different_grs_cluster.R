@@ -242,7 +242,7 @@ res <- foreach(j=1:nchains,.packages = c("extraDistr","tidyverse","patchwork","v
   chain$sampno <-chain$sampno + max(chain$sampno)*(j-1)
   chains[[j]] <- chain
 }
-chain <- do.call("bind_rows",chains)
+chain <- do.call("bind_rows",res)
 
 chain$beta_diff <- chain$beta_alt - chain$beta
 chain_grs <- chain %>% dplyr::select(sampno, beta, beta_alt,beta_diff) %>% pivot_longer(-sampno)
