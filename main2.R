@@ -13,6 +13,8 @@ library(patchwork)
 library(extraDistr)
 library(virosolver)
 library(ggpubr)
+library(lazymcmc)
+library(rethinking)
 #devtools::load_all("~/Documents/GitHub/virosolver")
 ## Where to perform the simulations
 HOME_WD <- "~"
@@ -25,6 +27,10 @@ source("code/plotting.R")
 source("code/seir_funcs.R")
 source("code/analysis_funcs.R")
 source("code/invasion_rates_KISSLER2020.R")
+source("code/simulate_symptomatic_population.R")
+source('~/Documents/GitHub/covid19-group-tests/code/viral_kinetics/functions/simulation_functions.R')
+source("~/Documents/GitHub/covid19-group-tests/code/viral_kinetics/functions/model_funcs_multivariate_hinge.R")
+
 
 model_pars <- read.csv("pars/partab_seir_model.csv")
 vl_pars <- model_pars$values
@@ -44,6 +50,21 @@ vl_pars_persistent["t_switch"] <- vl_pars_persistent["t_switch"] + 5
 vl_pars_both <- vl_pars
 vl_pars_both["t_switch"] <- vl_pars_both["t_switch"] + 5
 vl_pars_both["viral_peak"] <- vl_pars_both["viral_peak"] - 5
+
+confirm_delay_par1 <- 5
+confirm_delay_par2 <- 1
+
+## MCMC chains for individual-level kinetics
+parTab <- read.csv("~/Documents/GitHub/covid19-group-tests/code/viral_kinetics/pars/partab_multivariate_hinge.csv",stringsAsFactors=FALSE)
+chains <- load_mcmc_chains(paste0("~/Documents/GitHub/covid19-group-tests/code/viral_kinetics/chains/chains_swab"), parTab, 
+                           FALSE, 100, burnin=1000000,multi=TRUE)
+chain <- as.data.frame(chains[[2]])
+chain$sampno <- 1:nrow(chain)
+
+chain_vl2 <- chain
+chain_vl2$viral_peak_mean <- chain_vl2$viral_peak_mean + 1
+chain_vl2$wane_mean <- chain_vl2$wane_mean + 5
+
 
 ###############################################
 ## 1) SEIR SIMULATION
@@ -99,10 +120,12 @@ age_dist_comb <- calculate_infection_age_distribution(seir_dynamics$virus1_inc+s
 ###############################################
 ## FIGURE 1
 ###############################################
+samp_time <- 270
+
 p_ct_model <- plot_simulated_ct_curve(vl_pars, ages, 100)
 p_ct_model_2 <- plot_simulated_ct_curve_2variants(vl_pars,vl_pars_both,ages,20)
 
-p_ct_compare1 <- p_sim_ct_compare_naive(vl_pars,vl_pars_both,virus1_inc,virus2_inc, ages,samp_time=270,N=100)
+p_ct_compare1 <- p_sim_ct_compare_naive(vl_pars,vl_pars_both,virus1_inc,virus2_inc, ages,samp_time=samp_time,N=100)
 
 ## Using virosolver package, get predicted Ct distribution on each day of the simulation
 ct_dist_1 <- calculate_ct_distribution(vl_pars, ages, virus1_inc,times[times >= pars["importtime1"]+25]) %>% mutate(virus="Original variant")
@@ -136,8 +159,110 @@ set.seed(7)
 p_ct_samp_gr2 <- p_sim_ct_compare_growth(vl_pars,vl_pars_both,virus1_inc,virus2_inc, ages,combined_summaries,gr_tests[2],N=100,dotsize=1)
 
 fig2 <- (p_aligned_median + labs(tag="A")) / 
-           (p_ct_samp_gr1+ labs(tag="A"))  / 
-           (p_ct_samp_gr2+ labs(tag="A")) 
+           (p_ct_samp_gr1+ labs(tag="B"))  / 
+           (p_ct_samp_gr2+ labs(tag="C")) 
 ggsave(fig2,filename = "figures/fig2.pdf",height=7,width=5)
 ggsave(fig2,filename = "figures/fig2.png",height=7,width=5,dpi=300,units="in")
 
+###############################################
+## FIGURE 1 -- INDIVIDUAL-LEVEL KINETICS
+###############################################
+samp_size <- 100000
+ct_dist_1_indiv <- simulate_individual_level_data(samp_size, virus1_inc, times, chain, parTab, max_vl=16) %>% mutate(virus="Original variant")
+ct_dist_2_indiv <- simulate_individual_level_data(samp_size, virus2_inc, times, chain, parTab, max_vl=16) %>% mutate(virus="New variant, same kinetics") %>% mutate(i = i + max(ct_dist_1_indiv$i))
+ct_dist_2_indiv_alt <- simulate_individual_level_data(samp_size, virus2_inc, times, chain_vl2, parTab, max_vl=16) %>% mutate(virus="New variant, different kinetics") %>% mutate(i = i + max(ct_dist_2_indiv$i))
+cts_indiv_comb <- bind_rows(ct_dist_1_indiv,ct_dist_2_indiv,ct_dist_2_indiv_alt) %>% mutate(virus=factor(virus,levels=variant_levels))
+cts_indiv_comb <- cts_indiv_comb %>% filter(ct < 40)
+cts_indiv_summaries <- calculate_ct_dist_indiv_summaries(cts_indiv_comb) %>% left_join(grs) %>% ungroup()
+p2 <- plot_medians_and_skew(cts_indiv_summaries %>% filter(N > 25))
+p_vl_curves_indiv <- plot_indiv_simulated_ct_curve(cts_indiv_comb%>% filter(days_since_infection >= 0,days_since_infection < 35),1:35,100)
+p_grs_indiv <- plot_growth_rate_lineups(cts_indiv_summaries%>%filter(N > 50))
+fig1_alt <- (p_vl_curves_indiv+labs(tag="A"))/
+  (p2[[1]]+labs(tag="B"))/
+  (p_grs_indiv[[1]]+labs(tag="C"))
+ggsave(fig1_alt,filename = "figures/fig1_alt.pdf",height=7,width=5)
+ggsave(fig1_alt,filename = "figures/fig1_alt.png",height=7,width=5,dpi=300,units="in")
+
+
+###############################################
+## POWER CALCULATION FOR RANDOM CROSS-SECTIONS
+###############################################
+samp_time <- 270
+samp_sizes <- c(25,50,100,200,500)
+N_trials <- 500
+
+power_pop_all <- p_sim_ct_compare_power(vl_pars,vl_pars_both,virus1_inc,virus2_inc, ages,samp_time=samp_time,trials=N_trials,samp_sizes=samp_sizes)
+
+## Same again but aligned by growth rate
+power_pop_gr_up <- p_sim_ct_compare_power(vl_pars,vl_pars_both,virus1_inc,virus2_inc, ages,samp_time=samp_time,trials=N_trials,samp_sizes=samp_sizes,
+                                   align_gr=TRUE,grs=grs,gr_test=0.03)
+power_pop_gr_down <- p_sim_ct_compare_power(vl_pars,vl_pars_both,virus1_inc,virus2_inc, ages,samp_time=samp_time,trials=N_trials,samp_sizes=samp_sizes,
+                                        align_gr=TRUE,grs=grs,gr_test=-0.02)
+ggsave(filename="figures/fig4_pop.png",power_pop_all[[3]],height=7,width=5.5,units="in",dpi=300)
+ggsave(filename="figures/fig5_pop_up.png",power_pop_gr_up[[3]],height=7,width=5.5,units="in",dpi=300)
+ggsave(filename="figures/fig5_pop_down.png",power_pop_gr_down[[3]],height=7,width=5.5,units="in",dpi=300)
+
+
+peak_ct_vl1 <- 40 - log2(10)*(mean(chain$viral_peak_mean)-2)
+peak_ct_vl2 <- 40 - log2(10)*(mean(chain_vl2$viral_peak_mean)-2)
+true_diff_indiv_ct <- peak_ct_vl2 -  peak_ct_vl1
+## Same again but with individual-level kinetics
+power_indiv_all <- p_sim_ct_indiv_compare_power(cts_indiv_comb,270,trials=N_trials,samp_sizes=samp_sizes,alpha=0.05,true_peak_diff = true_diff_indiv_ct)
+power_indiv_gr_up <- p_sim_ct_indiv_compare_power(cts_indiv_comb,270,trials=N_trials,samp_sizes=samp_sizes,alpha=0.05,
+                                                  align_gr=TRUE,grs=grs,gr_test=0.03,true_peak_diff = true_diff_indiv_ct)
+power_indiv_gr_down <- p_sim_ct_indiv_compare_power(cts_indiv_comb,270,trials=N_trials,samp_sizes=samp_sizes,alpha=0.05,
+                                                    align_gr=TRUE,grs=grs,gr_test=-0.02,true_peak_diff = true_diff_indiv_ct)
+
+ggsave(filename="figures/fig4_indiv.png",power_indiv_all[[3]],height=7,width=5.5,units="in",dpi=300)
+ggsave(filename="figures/fig5_indiv_up.png",power_indiv_gr_up[[3]],height=7,width=5.5,units="in",dpi=300)
+ggsave(filename="figures/fig5_indiv_down.png",power_indiv_gr_down[[3]],height=7,width=5.5,units="in",dpi=300)
+
+###############################################
+## Symptomatic reporting population dataset
+###############################################
+ct_dist_symptomatic <- simulate_popn_cts_symptomatic(virus1_inc, virus2_inc, 
+                                                     vl_pars, vl_pars_both,
+                                                     10000000, times,
+                                                     confirm_delay_par1, confirm_delay_par2)
+ct_dist_symptomatic$p_mean_sympt
+ct_dist_symptomatic_dat <- ct_dist_symptomatic$ct_dat_sympt
+ct_dist_symptomatic_dat <- ct_dist_symptomatic_dat %>% mutate(days_since_onset = sampled_time - onset_time)
+ct_dist_symptomatic_dat <- ct_dist_symptomatic_dat%>% dplyr::select(-ct) %>% rename(ct=ct_obs)
+p_sympt_ct_kinetics_pop <- plot_simulated_ct_curve_symptomatic(ct_values=ct_dist_symptomatic_dat)
+p_sympt_ct_kinetics_pop <- p_sympt_ct_kinetics_pop + labs(tag="A")
+p_symptom_compare <- plot_smooth_mean_cts_symp(ct_values=ct_dist_symptomatic_dat) + 
+  geom_vline(xintercept=270,linetype="dotted",size=1,col="grey40")+
+  labs(tag="C")
+
+
+for_plot <- ct_dist_symptomatic_dat %>% filter(sampled_time == 270) %>% group_by(virus) %>% 
+  filter(virus != "New variant, same kinetics") 
+
+p_onset_dist <- for_plot %>%
+  ggplot() + 
+  stat_density(aes(x=days_since_onset,fill=virus,group=virus),position="identity",adjust=1.5,alpha=0.25,col="black") +
+  geom_vline(data=for_plot %>% group_by(virus) %>% summarize(mean_delay=mean(days_since_onset)),aes(xintercept=mean_delay,col=virus),linetype="dashed") +
+  variant_fill_scale + variant_color_scale +
+  ylab("Density") +
+  xlab("Days since onset") +
+  theme_overall + theme_nice_axes +
+  theme(legend.position=c(0.8,0.8)) +
+  labs(tag="B")
+
+power_pop_sympt <- p_sim_ct_compare_power_symp(ct_dist_symptomatic_dat %>% filter(ct < 40), 
+                                   samp_time=270,trials=500,samp_size=samp_sizes,
+                                   true_peak_diff=vl_pars_both["viral_peak"]-vl_pars["viral_peak"])
+#####
+#####
+p_compare_symp_pop <- p_sim_ct_compare_naive_symp(ct_dist_symptomatic_dat %>% filter(ct < 40), 
+                            samp_time=270,N=100,dotsize=0.75) + labs(tag="D")
+
+fig6 <- (p_sympt_ct_kinetics_pop | p_onset_dist)/(p_symptom_compare | p_compare_symp_pop)
+
+ggsave(filename="figures/fig6.png",fig6,height=6,width=8,units="in",dpi=300)
+ggsave(filename="figures/fig7.png",power_pop_sympt[[3]],height=7,width=5.5,units="in",dpi=300)
+
+power_pop_sympt_lm <- p_sim_ct_compare_power_symp_regression(ct_dist_symptomatic_dat %>% filter(ct < 40), 
+                            samp_time=270,trials=500,samp_size=samp_sizes,
+                            true_peak_diff=vl_pars_both["viral_peak"]-vl_pars["viral_peak"])
+ggsave(filename="figures/fig8.png",power_pop_sympt_lm[[3]],height=7,width=5.5,units="in",dpi=300)
