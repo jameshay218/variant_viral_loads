@@ -1,15 +1,16 @@
 theme_no_x_axis <- theme(axis.text.x=element_blank(),axis.ticks.x=element_blank(),axis.title.x=element_blank(),axis.line.x=element_blank())
 theme_nice_axes <- theme(axis.line.x=element_line(size=0.5,color="black"),axis.line.y=element_line(size=0.5,color="black"),panel.border = element_blank())
 theme_overall <- theme_bw() + theme(axis.text=element_text(size=7),axis.title = element_text(size=8),plot.tag = element_text(size=10,face="bold"),
-                                    legend.text=element_text(size=7),legend.title=element_text(size=8))
+                                    legend.text=element_text(size=7),legend.title=element_text(size=8),strip.background = element_blank(),
+                                    strip.text=element_text(size=8,face="bold"))
 
 variant_levels <- c("Overall","Original variant","New variant","New variant, same kinetics","New variant, different kinetics")
 
 color_key <- c("Overall"="black",
                "Original variant"="#0072B2",
                "New variant"="#D55E00",
-               "New variant, same kinetics"="#D55E00",
-               "New variant, different kinetics"="#009E73",
+               "New variant, same kinetics"="#009E73",
+               "New variant, different kinetics"="#D55E00",
                "Difference"="gray40")
 
 linetype_key <- c("Original variant"="solid",
@@ -24,26 +25,34 @@ size_key <- c("Original variant"=0.5,
               "New variant, same kinetics"=0.5,
               "Overall"=0.5)
 
-variant_color_scale <- scale_color_manual(name="Variant",values=color_key) 
-variant_fill_scale <- scale_fill_manual(name="Variant",values=color_key) 
-variant_linetype_scale <- scale_linetype_manual(name="Variant",values=linetype_key)
-variant_size_scale <- scale_size_manual(name="Variant",values=size_key)
+variant_color_scale <- scale_color_manual(name="Variant",values=color_key,drop=TRUE) 
+variant_fill_scale <- scale_fill_manual(name="Variant",values=color_key,drop=TRUE) 
 
+variant_color_scale_fig1 <- scale_color_manual(name="Variant",values=color_key[c("Original variant","New variant","Overall")],drop=TRUE) 
+variant_color_scale_fig2 <- scale_color_manual(name="Variant",drop=TRUE,values=color_key[c("Original variant","New variant, same kinetics","New variant, different kinetics")]) 
 
+variant_color_scale_min <- scale_color_manual(name="Variant",values=color_key[c("Original variant","New variant")],drop=TRUE) 
+variant_fill_scale_min <- scale_fill_manual(name="Variant",values=color_key[c("Original variant","New variant")],drop=TRUE) 
+variant_fill_scale_fig2 <- scale_fill_manual(name="Variant",drop=TRUE,values=color_key[c("Original variant","New variant, same kinetics","New variant, different kinetics")]) 
 
-comparison_color_scale <- scale_color_manual(name="Comparison",
-                                             values=c("V2a-V1,\nsame kinetics"="#009E73",
-                                                      "V2b-V1,\ndifferent kinetics"="#E69F00",
-                                                      "V2b-V2a,\ndifferent kinetics"="#009E73"))
-comparison_linetype_scale <- scale_linetype_manual(name="Comparison",
-                                             values=c("V2a-V1,\nsame kinetics"="solid",
-                                                      "V2b-V1,\ndifferent kinetics"="dashed",
-                                                      "V2b-V2a,\ndifferent kinetics"="solid"))
+variant_linetype_scale <- scale_linetype_manual(name="Variant",values=linetype_key,drop=TRUE)
+variant_size_scale <- scale_size_manual(name="Variant",values=size_key,drop=TRUE)
+
+variant_linetype_scale_fig2 <- scale_linetype_manual(name="Variant",drop=TRUE,values=linetype_key[c("Original variant","New variant, same kinetics","New variant, different kinetics")])
+
+comparison_color_scale <- scale_color_manual(name="Comparison",drop=TRUE,
+                                             values=c("V2-V1,\nsame kinetics"="#009E73",
+                                                      "V2-V1,\ndifferent kinetics"="#D55E00",
+                                                      "V2-V2,\ndifferent kinetics"="black"))
+comparison_linetype_scale <- scale_linetype_manual(name="Comparison",drop=TRUE,
+                                             values=c("V2-V1,\nsame kinetics"="solid",
+                                                      "V2-V1,\ndifferent kinetics"="dashed",
+                                                      "V2-V2,\ndifferent kinetics"="solid"))
 
 plot_medians_and_skew <- function(combined_summaries){
   p_medians <- ggplot(combined_summaries) + 
-    geom_line(aes(x=t,y=median,col=virus,linetype=virus,size=virus)) +
-    variant_color_scale + variant_fill_scale + variant_linetype_scale + variant_size_scale +
+    geom_line(aes(x=t,y=median,col=virus,linetype=virus),size=0.75) +
+    variant_color_scale + variant_fill_scale + variant_linetype_scale + 
     scale_y_continuous(trans="reverse") +
     scale_x_continuous(limits=c(0,max(times)),breaks=seq(0,550,by=50)) +
     ylab("Median Ct") +
@@ -52,8 +61,8 @@ plot_medians_and_skew <- function(combined_summaries){
     theme(legend.position="none") +theme_nice_axes# + theme_no_x_axis
   
   p_skews <- ggplot(combined_summaries) + 
-    geom_line(aes(x=t,y=skewness,col=virus,linetype=virus,size=virus))+
-    variant_color_scale + variant_fill_scale + variant_linetype_scale + variant_size_scale +
+    geom_line(aes(x=t,y=skewness,col=virus,linetype=virus),size=0.75)+
+    variant_color_scale + variant_fill_scale + variant_linetype_scale + 
     scale_x_continuous(limits=c(0,max(times)),breaks=seq(0,550,by=50)) +
     ylab("Skewness of Cts") +
     theme_overall +
@@ -82,12 +91,12 @@ plot_smooth_mean_cts_symp <- function(ct_values){
 plot_growth_rate_lineups <- function(ct_combined_summaries){
   p_medians <- ct_combined_summaries %>% pivot_longer(-c(t,virus,gr,inc)) %>% filter(name %in% c("median")) %>% filter(virus != "Overall") %>%
     ggplot() +
-    geom_line(aes(x=gr,y=value,col=virus,linetype=virus,size=virus)) +
+    geom_line(aes(x=gr,y=value,col=virus,linetype=virus),size=0.75) +
     ylab("Median Ct") +
     xlab("Growth rate") +
     scale_x_continuous(trans="reverse") +
     scale_y_continuous(trans="reverse") +
-    variant_color_scale + variant_linetype_scale + variant_size_scale +
+    variant_color_scale + variant_linetype_scale + 
     theme_overall + theme_nice_axes + theme(legend.position="none")
   
   p_skews <- ct_combined_summaries %>% pivot_longer(-c(t,virus,gr,inc)) %>% filter(name %in% c("skewness")) %>% filter(virus != "Overall") %>%
@@ -97,7 +106,7 @@ plot_growth_rate_lineups <- function(ct_combined_summaries){
     ylab("Skewness of Cts") +
     xlab("Growth rate") +
     variant_color_scale +
-    theme_overall + variant_linetype_scale + variant_size_scale +
+    theme_overall + variant_linetype_scale +
     theme_nice_axes + theme(legend.position="bottom")
   return(list(p_medians, p_skews))
 }
@@ -136,13 +145,13 @@ plot_indiv_simulated_ct_curve <- function(ct_values,ages=1:35,N=1000){
   p <- ggplot(ct_values_tmp) + 
     geom_rect(ymin=42,ymax=vl_pars["intercept"],xmin=-1,xmax=max(ages)+1,fill="grey70",alpha=0.25) +
     geom_jitter(aes(x=days_since_infection,y=ct,col=virus),alpha=0.25,height=0,width=0.25,size=0.2) + 
-    geom_line(data=ct_values_mean,aes(x=days_since_infection,y=mode_ct,col=virus,linetype=virus)) +
+    geom_line(data=ct_values_mean,aes(x=days_since_infection,y=mode_ct,col=virus,linetype=virus,size=virus)) +
     coord_flip()+
     coord_cartesian(ylim=c(40,5),xlim=c(0,max(ages))) +
     scale_x_continuous(breaks=seq(0, max(ages),by=5)) +
-    variant_color_scale +
-    scale_linetype_manual(name="Variant",values=c("Original variant"="solid","New variant, same kinetics"="dotted", 
-                                                  "New variant, different kinetics"="solid")) +
+    variant_color_scale_fig2 +
+    scale_linetype_manual(name="Variant",values=c("Original variant"="solid","New variant, same kinetics"="dashed", "New variant, different kinetics"="solid")) +
+    scale_size_manual(name="Variant",values=c("Original variant"=0.75,"New variant, same kinetics"=1, "New variant, different kinetics"=0.75)) +
     xlab("Time since infection") + ylab("Ct value") +
     theme_overall + theme_nice_axes + theme(legend.position=c(0.7,0.8))
   
@@ -192,11 +201,11 @@ plot_simulated_ct_curve_2variants <- function(vl_pars1, vl_pars2,ages=1:35,N=100
   p <- ggplot(sim_cts_all %>% filter(ct < 40)) + 
     geom_rect(ymin=42,ymax=vl_pars["intercept"],xmin=-1,xmax=max(ages)+1,fill="grey70",alpha=0.25) +
     geom_jitter(aes(x=age,y=ct,col=virus),alpha=0.25,height=0,width=0.25,size=0.2) + 
-    geom_line(data=modal_ct_all,aes(x=age,y=ct,col=virus,linetype=virus,size=virus)) +
+    geom_line(data=modal_ct_all,aes(x=age,y=ct,col=virus,linetype=virus)) +
     coord_flip()+
     coord_cartesian(ylim=c(40,5),xlim=c(0,max(ages))) +
     scale_x_continuous(breaks=seq(0, max(ages),by=5)) +
-    variant_color_scale +
+    variant_color_scale_fig2 +
     scale_linetype_manual(name="Variant",values=c("Original variant"="solid","New variant, same kinetics"="dashed", "New variant, different kinetics"="solid")) +
     scale_size_manual(name="Variant",values=c("Original variant"=0.75,"New variant, same kinetics"=1, "New variant, different kinetics"=0.75)) +
     xlab("Time since infection") + ylab("Ct value") +
@@ -362,7 +371,7 @@ p_sim_ct_compare_power <- function(vl_pars1,vl_pars2,virus1_inc,virus2_inc,
       test1v2alt <- as.numeric(wilcox.test(v1_cts,v2_alt_cts,alternative="two.sided")["p.value"])
       test2v2alt <- as.numeric(wilcox.test(v2_alt_cts,v2_cts,alternative="two.sided")["p.value"])
       
-      results[[trial]] <- tibble(comparison=c("V2a-V1,\nsame kinetics","V2b-V1,\ndifferent kinetics","V2b-V2a,\ndifferent kinetics"),
+      results[[trial]] <- tibble(comparison=c("V2-V1,\nsame kinetics","V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"),
                                  difference=c(diff1v2,diff1v2alt,diff2v2alt),
                                  pvalue=c(test1v2,test1v2alt,test2v2alt),trial=trial) %>% 
         mutate(signif=as.numeric(pvalue<alpha),samp_size=N,samp_size_label=paste0("N=",N))
@@ -374,41 +383,48 @@ p_sim_ct_compare_power <- function(vl_pars1,vl_pars2,virus1_inc,virus2_inc,
   all_results <- do.call("bind_rows",all_results)
   all_results_summary <- all_results %>% group_by(comparison,samp_size) %>% summarize(prop_different=sum(signif)/n())
   
+  all_results$comparison <- factor(all_results$comparison, levels=c("V2-V1,\nsame kinetics","V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))
+  all_results_summary$comparison <- factor(all_results_summary$comparison, levels=c("V2-V1,\nsame kinetics","V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))
+  
   p_differences <- ggplot(all_results %>% mutate(samp_size_label=factor(samp_size_label,levels=paste0("N=",samp_sizes)))) + 
     geom_jitter(aes(x=comparison,y=difference,col=comparison),height=0,width=0.25,size=0.25,alpha=0.5) + 
-    geom_hline(yintercept=0,linetype="dashed",col="black") + 
-    geom_hline(yintercept=true_peak_diff,linetype="dotted",col="#009E73") + 
-    #geom_hline(yintercept=true_overall_diff_1v2,linetype="dashed",col="black") + 
-    #geom_hline(yintercept=true_overall_diff_1v2b,linetype="dashed",col="red") + 
-    #geom_hline(yintercept=true_overall_diff_2v2b,linetype="dashed",col="orange") + 
+    geom_hline(yintercept=0,linetype="dashed",col="#009E73") + 
+    geom_hline(yintercept=true_peak_diff,linetype="dashed",col="#D55E00") + 
     comparison_color_scale +
     facet_wrap(~samp_size_label,nrow=1)+
     ylab("Median Ct difference") +
     xlab("") +
     theme_overall + 
+    theme_nice_axes +
     theme(axis.text.x=element_text(angle=45,hjust=1),legend.position="none") +
     labs(tag="A")
+  
   p_t1_error <- ggplot(all_results_summary %>% 
-                         filter(comparison %in% c("V2b-V1,\ndifferent kinetics","V2b-V2a,\ndifferent kinetics"))%>%
+                         filter(comparison %in% c("V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))%>%
                          mutate(samp_size=factor(samp_size,levels=samp_sizes))) + 
     geom_line(aes(x=as.numeric(samp_size),y=prop_different,col=comparison)) + 
-    comparison_color_scale +
+    scale_color_manual(name="Comparison",drop=TRUE,
+                       values=c("V2-V1,\ndifferent kinetics"="#D55E00",
+                                "V2-V2,\ndifferent kinetics"="black")) +
     scale_y_continuous(limits=c(0,1)) + 
     ylab("Power") +
     xlab("") +
     theme_overall + 
-    theme(legend.position=c(0.8,0.3)) +
+    theme_nice_axes +
+    theme(legend.position=c(0.8,0.4)) +
     scale_x_continuous(labels=samp_sizes) +
     labs(tag="B")
-  p_t2_error <- ggplot(all_results_summary %>% filter(comparison %in% c("V2a-V1,\nsame kinetics"))%>%
+  p_t2_error <- ggplot(all_results_summary %>% filter(comparison %in% c("V2-V1,\nsame kinetics"))%>%
                          mutate(samp_size=factor(samp_size,levels=samp_sizes))) + 
     geom_line(aes(x=as.numeric(samp_size),y=prop_different,col=comparison)) + 
-    comparison_color_scale +
+    scale_color_manual(name="Comparison",drop=TRUE,
+                       values=c("V2-V1,\nsame kinetics"="#009E73")) +
     scale_y_continuous(limits=c(0,1)) + 
     ylab("Type 1 error") +
     xlab("Sample size") +
     theme_overall + 
-    theme(legend.position=c(0.8,0.3)) +
+    theme_nice_axes +
+    theme(legend.position=c(0.8,0.4)) +
     scale_x_continuous(labels=samp_sizes) +
     labs(tag="C")
   
@@ -463,7 +479,7 @@ p_sim_ct_indiv_compare_power <- function(cts_indiv_comb,samp_time,trials=100,sam
       test1v2alt <- as.numeric(wilcox.test(v1_cts,v2_alt_cts,alternative="two.sided")["p.value"])
       test2v2alt <- as.numeric(wilcox.test(v2_alt_cts,v2_cts,alternative="two.sided")["p.value"])
       
-      results[[j]] <- tibble(comparison=c("V2a-V1,\nsame kinetics","V2b-V1,\ndifferent kinetics","V2b-V2a,\ndifferent kinetics"),
+      results[[j]] <- tibble(comparison=c("V2-V1,\nsame kinetics","V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"),
                                  difference=c(diff1v2,diff1v2alt,diff2v2alt),
                                  pvalue=c(test1v2,test1v2alt,test2v2alt),trial=j) %>% 
         mutate(signif=as.numeric(pvalue<alpha),samp_size=N,samp_size_label=paste0("N=",N))
@@ -474,30 +490,44 @@ p_sim_ct_indiv_compare_power <- function(cts_indiv_comb,samp_time,trials=100,sam
   all_results <- do.call("bind_rows",all_results)
   all_results_summary <- all_results %>% group_by(comparison,samp_size) %>% summarize(prop_different=sum(signif)/n())
   
+  all_results$comparison <- factor(all_results$comparison, levels=c("V2-V1,\nsame kinetics","V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))
+  all_results_summary$comparison <- factor(all_results_summary$comparison, levels=c("V2-V1,\nsame kinetics","V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))
+  
   p_differences <- ggplot(all_results %>% mutate(samp_size_label=factor(samp_size_label,levels=paste0("N=",samp_sizes)))) + 
     geom_jitter(aes(x=comparison,y=difference,col=comparison),height=0,width=0.25,size=0.25,alpha=0.5) + 
-    geom_hline(yintercept=0,linetype="dashed",col="black") + 
-    geom_hline(yintercept=true_peak_diff,linetype="dotted",col="#009E73") + 
-    comparison_color_scale +
+    geom_hline(yintercept=0,linetype="dashed",col="#009E73") + 
+    geom_hline(yintercept=true_peak_diff,linetype="dashed",col="#D55E00") + 
+    #comparison_color_scale +
+    scale_color_manual(name="Comparison",drop=TRUE,
+                       values=c(#"V2-V1,\nsame kinetics"="#009E73",
+                                "V2-V1,\ndifferent kinetics"="#D55E00",
+                                "V2-V2,\ndifferent kinetics"="black"))
     facet_wrap(~samp_size_label,nrow=1)+
     ylab("Median Ct difference") +
     xlab("") +
-    theme_overall + 
+    theme_overall +
+    theme_nice_axes + 
     theme(axis.text.x=element_text(angle=45,hjust=1),legend.position="none") +
     labs(tag="A")
   p_t1_error <- ggplot(all_results_summary %>% 
-                         filter(comparison %in% c("V2b-V1,\ndifferent kinetics","V2b-V2a,\ndifferent kinetics"))%>%
+                         filter(comparison %in% c("V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))%>%
                          mutate(samp_size=factor(samp_size,levels=samp_sizes))) + 
     geom_line(aes(x=as.numeric(samp_size),y=prop_different,col=comparison)) + 
-    comparison_color_scale +
+    #comparison_color_scale +
+    scale_color_manual(name="Comparison",drop=TRUE,
+                       values=c("V2-V1,\nsame kinetics"="#009E73"#,
+                                #"V2-V1,\ndifferent kinetics"="#D55E00",
+                                #"V2-V2,\ndifferent kinetics"="black"
+                                ))+
     scale_y_continuous(limits=c(0,1)) + 
     ylab("Power") +
     xlab("") +
-    theme_overall + 
-    theme(legend.position=c(0.8,0.3)) +
+    theme_overall +
+    theme_nice_axes + 
+    theme(legend.position=c(0.8,0.4)) +
     scale_x_continuous(labels=samp_sizes) +
     labs(tag="B")
-  p_t2_error <- ggplot(all_results_summary %>% filter(comparison %in% c("V2a-V1,\nsame kinetics"))%>%
+  p_t2_error <- ggplot(all_results_summary %>% filter(comparison %in% c("V2-V1,\nsame kinetics"))%>%
                          mutate(samp_size=factor(samp_size,levels=samp_sizes))) + 
     geom_line(aes(x=as.numeric(samp_size),y=prop_different,col=comparison)) + 
     comparison_color_scale +
@@ -505,7 +535,8 @@ p_sim_ct_indiv_compare_power <- function(cts_indiv_comb,samp_time,trials=100,sam
     ylab("Type 1 error") +
     xlab("Sample size") +
     theme_overall + 
-    theme(legend.position=c(0.8,0.3)) +
+    theme_nice_axes +
+    theme(legend.position=c(0.8,0.4)) +
     scale_x_continuous(labels=samp_sizes) +
     labs(tag="C")
   
@@ -547,7 +578,7 @@ p_sim_ct_compare_power_symp <- function(ct_dist_symptomatic_dat, samp_time,trial
       test1v2alt <- as.numeric(wilcox.test(v1_cts,v2_alt_cts,alternative="two.sided")["p.value"])
       test2v2alt <- as.numeric(wilcox.test(v2_alt_cts,v2_cts,alternative="two.sided")["p.value"])
       
-      results[[j]] <- tibble(comparison=c("V2a-V1,\nsame kinetics","V2b-V1,\ndifferent kinetics","V2b-V2a,\ndifferent kinetics"),
+      results[[j]] <- tibble(comparison=c("V2-V1,\nsame kinetics","V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"),
                              difference=c(diff1v2,diff1v2alt,diff2v2alt),
                              pvalue=c(test1v2,test1v2alt,test2v2alt),trial=j) %>% 
         mutate(signif=as.numeric(pvalue<alpha),samp_size=N,samp_size_label=paste0("N=",N))
@@ -558,41 +589,51 @@ p_sim_ct_compare_power_symp <- function(ct_dist_symptomatic_dat, samp_time,trial
   all_results <- do.call("bind_rows",all_results)
   all_results_summary <- all_results %>% group_by(comparison,samp_size) %>% summarize(prop_different=sum(signif)/n())
   
+  all_results$comparison <- factor(all_results$comparison, levels=c("V2-V1,\nsame kinetics","V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))
+  all_results_summary$comparison <- factor(all_results_summary$comparison, levels=c("V2-V1,\nsame kinetics","V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))
+  
+  
   p_differences <- ggplot(all_results %>% mutate(samp_size_label=factor(samp_size_label,levels=paste0("N=",samp_sizes)))) + 
     geom_jitter(aes(x=comparison,y=difference,col=comparison),height=0,width=0.25,size=0.25,alpha=0.5) + 
-    geom_hline(yintercept=0,linetype="dashed",col="black") + 
-    geom_hline(yintercept=true_peak_diff,linetype="dotted",col="#009E73") + 
-    #geom_hline(yintercept=true_overall_diff_1v2,linetype="dashed",col="black") + 
-    #geom_hline(yintercept=true_overall_diff_1v2b,linetype="dashed",col="red") + 
-    #geom_hline(yintercept=true_overall_diff_2v2b,linetype="dashed",col="orange") + 
+    geom_hline(yintercept=0,linetype="dashed",col="#009E73") + 
+    geom_hline(yintercept=true_peak_diff,linetype="dashed",col="#D55E00") + 
     comparison_color_scale +
     facet_wrap(~samp_size_label,nrow=1)+
     ylab("Median Ct difference") +
     xlab("") +
     theme_overall + 
+    theme_nice_axes +
     theme(axis.text.x=element_text(angle=45,hjust=1),legend.position="none") +
     labs(tag="A")
   p_t1_error <- ggplot(all_results_summary %>% 
-                         filter(comparison %in% c("V2b-V1,\ndifferent kinetics","V2b-V2a,\ndifferent kinetics"))%>%
+                         filter(comparison %in% c("V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))%>%
                          mutate(samp_size=factor(samp_size,levels=samp_sizes))) + 
     geom_line(aes(x=as.numeric(samp_size),y=prop_different,col=comparison)) + 
-    comparison_color_scale +
+    #comparison_color_scale +
+    scale_color_manual(name="Comparison",drop=TRUE,
+                       values=c(#"V2-V1,\nsame kinetics"="#009E73",
+                                "V2-V1,\ndifferent kinetics"="#D55E00",
+                                "V2-V2,\ndifferent kinetics"="black")) +
     scale_y_continuous(limits=c(0,1)) + 
     ylab("Power") +
     xlab("") +
     theme_overall + 
-    theme(legend.position=c(0.8,0.3)) +
+    theme_nice_axes +
+    theme(legend.position=c(0.8,0.4)) +
     scale_x_continuous(labels=samp_sizes) +
     labs(tag="B")
-  p_t2_error <- ggplot(all_results_summary %>% filter(comparison %in% c("V2a-V1,\nsame kinetics"))%>%
+  p_t2_error <- ggplot(all_results_summary %>% filter(comparison %in% c("V2-V1,\nsame kinetics"))%>%
                          mutate(samp_size=factor(samp_size,levels=samp_sizes))) + 
     geom_line(aes(x=as.numeric(samp_size),y=prop_different,col=comparison)) + 
-    comparison_color_scale +
+    #comparison_color_scale +
+    scale_color_manual(name="Comparison",drop=TRUE,
+                       values=c("V2-V1,\nsame kinetics"="#009E73")) +
     scale_y_continuous(limits=c(0,1)) + 
     ylab("Type 1 error") +
     xlab("Sample size") +
     theme_overall + 
-    theme(legend.position=c(0.3,0.8)) +
+    theme_nice_axes +
+    theme(legend.position=c(0.4,0.8)) +
     scale_x_continuous(labels=samp_sizes) +
     labs(tag="C")
   
@@ -661,7 +702,7 @@ p_sim_ct_compare_power_symp_regression <- function(ct_dist_symptomatic_dat, samp
       onset_upper_ci2 <- confint(fit2)[2,2]
       onset_upper_ci3 <- confint(fit3)[2,2]
       
-      results[[j]] <- tibble(comparison=c("V2a-V1,\nsame kinetics","V2b-V1,\ndifferent kinetics","V2b-V2a,\ndifferent kinetics"),
+      results[[j]] <- tibble(comparison=c("V2-V1,\nsame kinetics","V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"),
                              difference=c(diff1v2,diff1v2alt,diff2v2alt),
                              pvalue=c(test1v2,test1v2alt,test2v2alt),
                              lower_confint=c(lower_ci1,lower_ci2,lower_ci3),
@@ -684,32 +725,38 @@ p_sim_ct_compare_power_symp_regression <- function(ct_dist_symptomatic_dat, samp
   all_results <- do.call("bind_rows",all_results)
   all_results_summary <- all_results %>% group_by(comparison,samp_size) %>% summarize(prop_correct=sum(correct)/n())
   
+  all_results$comparison <- factor(all_results$comparison, levels=c("V2-V1,\nsame kinetics","V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))
+  all_results_summary$comparison <- factor(all_results_summary$comparison, levels=c("V2-V1,\nsame kinetics","V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))
+  
+  
   p_differences <- ggplot(all_results %>% mutate(samp_size_label=factor(samp_size_label,levels=paste0("N=",samp_sizes)))) + 
     geom_jitter(aes(x=comparison,y=difference,col=comparison),height=0,width=0.25,size=0.25,alpha=0.5) + 
-    geom_hline(yintercept=0,linetype="dashed",col="black") + 
-    geom_hline(yintercept=true_peak_diff,linetype="dotted",col="#009E73") + 
+    geom_hline(yintercept=0,linetype="dashed",col="#009E73") + 
+    geom_hline(yintercept=true_peak_diff,linetype="dashed",col="#D55E00") + 
     comparison_color_scale +
     facet_wrap(~samp_size_label,nrow=1)+
     ylab("Effect of virus on Ct value") +
     xlab("") +
     theme_overall + 
+    theme_nice_axes +
     theme(axis.text.x=element_text(angle=45,hjust=1),legend.position="none") +
     labs(tag="A")
   
   p_t1_error <- ggplot(all_results_summary %>% 
-                         filter(comparison %in% c("V2b-V1,\ndifferent kinetics","V2b-V2a,\ndifferent kinetics"))%>%
+                         filter(comparison %in% c("V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))%>%
                          mutate(samp_size=factor(samp_size,levels=samp_sizes))) + 
     geom_line(aes(x=as.numeric(samp_size),y=prop_correct,col=comparison)) + 
     comparison_color_scale + comparison_linetype_scale +
     ylab("Power") +
     xlab("") +
     theme_overall + 
+    theme_nice_axes +
     scale_y_continuous(limits=c(0,1)) +
-    theme(legend.position=c(0.8,0.3)) +
+    theme(legend.position=c(0.8,0.4)) +
     scale_x_continuous(labels=samp_sizes) +
     labs(tag="B")
   
-  p_t2_error <- ggplot(all_results_summary %>% filter(comparison %in% c("V2a-V1,\nsame kinetics"))%>%
+  p_t2_error <- ggplot(all_results_summary %>% filter(comparison %in% c("V2-V1,\nsame kinetics"))%>%
                          mutate(samp_size=factor(samp_size,levels=samp_sizes))) + 
     geom_line(aes(x=as.numeric(samp_size),y=1-prop_correct,col=comparison)) + 
     comparison_color_scale +
@@ -717,7 +764,8 @@ p_sim_ct_compare_power_symp_regression <- function(ct_dist_symptomatic_dat, samp
     ylab("Type 1 error") +
     xlab("Sample size") +
     theme_overall + 
-    theme(legend.position=c(0.3,0.8)) +
+    theme_nice_axes +
+    theme(legend.position=c(0.4,0.8)) +
     scale_x_continuous(labels=samp_sizes) +
     labs(tag="C")
   
@@ -877,14 +925,16 @@ plot_virosolver_comparisons <- function(chain, true_vals, real_scales, real_v1_g
   
   p_comb_preds <- ggplot(v_preds_comb) + 
     geom_ribbon(aes(x=t,ymin=lower95,ymax=upper95,fill=virus),alpha=0.1) +
-    #geom_ribbon(aes(x=t,ymin=lower50,ymax=upper50,fill=virus),alpha=0.5) +
-    geom_line(aes(x=t,y=median,col=virus)) +
-    variant_color_scale + variant_fill_scale +
-    geom_line(data=real_grs_comb,aes(x=t,y=prob_infection,col=virus),linetype="dashed",size=0.75) +
+    geom_ribbon(aes(x=t,ymin=lower50,ymax=upper50,fill=virus),alpha=0.5) +
+    geom_line(aes(x=t,y=median,col=virus,linetype="Mean estimate")) +
+    variant_color_scale_min + variant_fill_scale_min +
+    geom_line(data=real_grs_comb,aes(x=t,y=prob_infection,col=virus,linetype="True value"),size=0.75) +
+    scale_linetype_manual(name="",values=c("True value"="dashed","Mean estimate"="solid")) +
     #geom_line(data=real_v2_gr,aes(x=t,y=prob_infection),linetype="dashed",col="black",size=0.75) +
     theme_overall+
     theme_nice_axes +
-    theme(legend.position="none") +
+    theme(legend.position=c(0.3,0.7),legend.text = element_text(size=6),legend.title = element_blank(),
+          legend.spacing.y=unit(0,"cm"),legend.direction = "horizontal") +
     scale_x_continuous(breaks=seq(0,35,by=5),labels=rev(0-seq(0,35,by=5))) +
     ylab("Relative probability of infection") +
     xlab("Days (relative to sample date)")

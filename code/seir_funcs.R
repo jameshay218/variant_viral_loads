@@ -22,8 +22,8 @@ run_2strain_seir_simulation <- function(pars, states, times){
   
   p_inc <- ggplot(seir_inc_dat) + 
     geom_line(aes(x=t,y=inc,col=virus))+
-    geom_vline(xintercept=c(180),linetype="dashed",col="red") +
-    geom_vline(xintercept=c(0),linetype="dashed",col="blue") +
+    geom_vline(xintercept=c(180),linetype="dashed",col="#D55E00") +
+    geom_vline(xintercept=c(0),linetype="dashed",col="#0072B2") +
     variant_color_scale +
     xlab("Time") +
     scale_x_continuous(limits=c(0,max(times)),breaks=seq(0,550,by=50)) +

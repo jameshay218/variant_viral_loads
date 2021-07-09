@@ -23,6 +23,17 @@ HOME_WD <- "~"
 HOME_WD <- "~/Documents/GitHub/"
 setwd(paste0(HOME_WD,"/variant_viral_loads"))
 
+## Load functions for line list simulation
+source("code/linelist_sim_funcs.R")
+source("code/plotting.R")
+source("code/seir_funcs.R")
+source("code/analysis_funcs.R")
+source("code/invasion_rates_KISSLER2020.R")
+source("code/simulate_symptomatic_population.R")
+source('~/Documents/GitHub/covid19-group-tests/code/viral_kinetics/functions/simulation_functions.R')
+source("~/Documents/GitHub/covid19-group-tests/code/viral_kinetics/functions/model_funcs_multivariate_hinge.R")
+
+
 ## Set up cluster for parallel chains
 n_clusters <- 9
 cl <- parallel::makeCluster(n_clusters, setup_strategy = "sequential")
@@ -307,17 +318,23 @@ chains_late <- do.call("bind_rows",res[(nchains+1):(nchains+nchains)])
 chains_fixed <- do.call("bind_rows",res[(nchains+nchains+1):(3*nchains)])
 
 
-p_incidence1 <- plot_virosolver_comparisons(chains_same, true_vals_same, real_scales,real_v1_gr_same,real_v2_gr_same)
-p_incidence2 <- plot_virosolver_comparisons(chains_late, true_vals_late, real_scales,real_v1_gr_late,real_v2_gr_late)
+p_incidence1 <- plot_virosolver_comparisons(chains_same, true_vals_same, real_scales,real_v1_gr_same,real_v2_gr_same) + 
+  coord_cartesian(ylim=c(0,0.15))
+p_incidence2 <- plot_virosolver_comparisons(chains_late, true_vals_late, real_scales,real_v1_gr_late,real_v2_gr_late)+ 
+  coord_cartesian(ylim=c(0,0.15))
 p_incidence3 <- plot_virosolver_comparisons(chains_fixed, true_vals_same, real_scales,real_v1_gr_same,real_v2_gr_same)
 
 p_compare_kinetics1 <- p_compare_estimated_curves(chains_same,ages=0:lastday,N=100,nsamp=1000,true_pars1=vl_pars1,true_pars2=vl_pars2)
-p_compare_kinetics2 <- p_compare_estimated_curves(chains_late,ages=0:lastday,N=100,nsamp=1000)
-p_compare_kinetics3 <- p_compare_estimated_curves(chains_late,ages=0:lastday,N=100,nsamp=1000)
+p_compare_kinetics2 <- p_compare_estimated_curves(chains_late,ages=0:lastday,N=100,nsamp=1000,true_pars1=vl_pars1,true_pars2=vl_pars2)
+p_compare_kinetics3 <- p_compare_estimated_curves(chains_late,ages=0:lastday,N=100,nsamp=1000,true_pars1=vl_pars1,true_pars2=vl_pars2)
 
-p_LHS <- (p_ct_samp_same+labs(tag="A")) / (p_incidence1+labs(tag="C")) / (p_compare_kinetics1+labs(tag="E") + theme(legend.position="none"))
-p_RHS <- (p_ct_samp_late+labs(tag="B")) / (p_incidence2+labs(tag="D")) / (p_compare_kinetics2+labs(tag="F")+ theme(legend.position="none"))
+p_RHS <- (p_ct_samp_same+labs(tag="D")+ggtitle("Both increasing, new variant at higher rate")+theme(plot.title = element_text(size=8,face="bold"))) / 
+  (p_incidence1+labs(tag="E")) / (p_compare_kinetics1+labs(tag="F") + theme(legend.position="none"))
+p_LHS <- (p_ct_samp_late+labs(tag="A")+ggtitle("Original variant decreasing, new variant increasing")+theme(plot.title = element_text(size=8,face="bold"))) / 
+  (p_incidence2+labs(tag="B")) / (p_compare_kinetics2+labs(tag="C")+ theme(legend.position="none"))
 
 
 p_main <- p_LHS | p_RHS
-ggsave("figures/estimate_diffs.png",p_main,height=6,width=8,units="in",dpi=300)
+ggsave("figures/estimate_diffs.png",p_main,height=8,width=8,units="in",dpi=300)
+ggsave("figures/estimate_diffs.pdf",p_main,height=8,width=8)
+

@@ -137,7 +137,7 @@ ct_combined_summaries <- ct_combined_summaries %>% left_join(grs) %>% ungroup()
 
 p1 <- plot_medians_and_skew(ct_combined_summaries)
 
-p_LHS <- (seir_dynamics$p_inc + labs(tag="A"))/
+p_LHS <- (seir_dynamics$p_inc + labs(tag="A")+ variant_color_scale_fig1)/
   (p1[[1]] + labs(tag="C") + geom_vline(xintercept=samp_time,linetype="dotted",col="grey40",size=0.75) + 
      scale_y_continuous(trans="reverse"))
 p_RHS <- (p_ct_model_2 + labs(tag="B"))/
@@ -198,9 +198,9 @@ power_pop_gr_up <- p_sim_ct_compare_power(vl_pars,vl_pars_both,virus1_inc,virus2
                                    align_gr=TRUE,grs=grs,gr_test=0.03)
 power_pop_gr_down <- p_sim_ct_compare_power(vl_pars,vl_pars_both,virus1_inc,virus2_inc, ages,samp_time=samp_time,trials=N_trials,samp_sizes=samp_sizes,
                                         align_gr=TRUE,grs=grs,gr_test=-0.02)
-ggsave(filename="figures/fig4_pop.png",power_pop_all[[3]],height=7,width=5.5,units="in",dpi=300)
-ggsave(filename="figures/fig5_pop_up.png",power_pop_gr_up[[3]],height=7,width=5.5,units="in",dpi=300)
-ggsave(filename="figures/fig5_pop_down.png",power_pop_gr_down[[3]],height=7,width=5.5,units="in",dpi=300)
+ggsave(filename="figures/figS1.png",power_pop_all[[3]],height=8,width=6,units="in",dpi=300)
+ggsave(filename="figures/figS2.png",power_pop_gr_up[[3]],height=8,width=6,units="in",dpi=300)
+ggsave(filename="figures/figS3.png",power_pop_gr_down[[3]],height=8,width=6,units="in",dpi=300)
 
 
 peak_ct_vl1 <- 40 - log2(10)*(mean(chain$viral_peak_mean)-2)
@@ -213,9 +213,9 @@ power_indiv_gr_up <- p_sim_ct_indiv_compare_power(cts_indiv_comb,270,trials=N_tr
 power_indiv_gr_down <- p_sim_ct_indiv_compare_power(cts_indiv_comb,270,trials=N_trials,samp_sizes=samp_sizes,alpha=0.05,
                                                     align_gr=TRUE,grs=grs,gr_test=-0.02,true_peak_diff = true_diff_indiv_ct)
 
-ggsave(filename="figures/fig4_indiv.png",power_indiv_all[[3]],height=7,width=5.5,units="in",dpi=300)
-ggsave(filename="figures/fig5_indiv_up.png",power_indiv_gr_up[[3]],height=7,width=5.5,units="in",dpi=300)
-ggsave(filename="figures/fig5_indiv_down.png",power_indiv_gr_down[[3]],height=7,width=5.5,units="in",dpi=300)
+ggsave(filename="figures/figS1_indiv.png",power_indiv_all[[3]],height=7,width=5.5,units="in",dpi=300)
+ggsave(filename="figures/figS2_indiv_up.png",power_indiv_gr_up[[3]],height=7,width=5.5,units="in",dpi=300)
+ggsave(filename="figures/figS3_indiv_down.png",power_indiv_gr_down[[3]],height=7,width=5.5,units="in",dpi=300)
 
 ###############################################
 ## Symptomatic reporting population dataset
@@ -229,20 +229,21 @@ ct_dist_symptomatic_dat <- ct_dist_symptomatic$ct_dat_sympt
 ct_dist_symptomatic_dat <- ct_dist_symptomatic_dat %>% mutate(days_since_onset = sampled_time - onset_time)
 ct_dist_symptomatic_dat <- ct_dist_symptomatic_dat%>% dplyr::select(-ct) %>% rename(ct=ct_obs)
 p_sympt_ct_kinetics_pop <- plot_simulated_ct_curve_symptomatic(ct_values=ct_dist_symptomatic_dat)
-p_sympt_ct_kinetics_pop <- p_sympt_ct_kinetics_pop + labs(tag="A")
+p_sympt_ct_kinetics_pop <- p_sympt_ct_kinetics_pop + labs(tag="A") + variant_color_scale_fig2 + variant_fill_scale_fig2
 p_symptom_compare <- plot_smooth_mean_cts_symp(ct_values=ct_dist_symptomatic_dat) + 
   geom_vline(xintercept=270,linetype="dotted",size=1,col="grey40")+
   labs(tag="C")
 
 
 for_plot <- ct_dist_symptomatic_dat %>% filter(sampled_time == 270) %>% group_by(virus) %>% 
-  filter(virus != "New variant, same kinetics") 
+  filter(virus != "New variant, same kinetics")
+for_plot[as.character(for_plot$virus) == "New variant, different kinetics","virus"] <- "New variant"
 
 p_onset_dist <- for_plot %>%
   ggplot() + 
-  stat_density(aes(x=days_since_onset,fill=virus,group=virus),position="identity",adjust=1.5,alpha=0.25,col="black") +
+  stat_density(aes(x=days_since_onset,fill=virus,group=virus),position="identity",adjust=2.5,alpha=0.25,col="black") +
   geom_vline(data=for_plot %>% group_by(virus) %>% summarize(mean_delay=mean(days_since_onset)),aes(xintercept=mean_delay,col=virus),linetype="dashed") +
-  variant_fill_scale + variant_color_scale +
+  variant_fill_scale_min + variant_color_scale_min +
   ylab("Density") +
   xlab("Days since onset") +
   theme_overall + theme_nice_axes +
@@ -257,12 +258,13 @@ power_pop_sympt <- p_sim_ct_compare_power_symp(ct_dist_symptomatic_dat %>% filte
 p_compare_symp_pop <- p_sim_ct_compare_naive_symp(ct_dist_symptomatic_dat %>% filter(ct < 40), 
                             samp_time=270,N=100,dotsize=0.75) + labs(tag="D")
 
-fig6 <- (p_sympt_ct_kinetics_pop | p_onset_dist)/(p_symptom_compare | p_compare_symp_pop)
+fig3 <- (p_sympt_ct_kinetics_pop | p_onset_dist)/(p_symptom_compare | p_compare_symp_pop)
 
-ggsave(filename="figures/fig6.png",fig6,height=6,width=8,units="in",dpi=300)
-ggsave(filename="figures/fig7.png",power_pop_sympt[[3]],height=7,width=5.5,units="in",dpi=300)
+ggsave(filename="figures/fig3.png",fig3,height=6,width=8,units="in",dpi=300)
+ggsave(filename="figures/fig3.pdf",fig3,height=6,width=8)
+ggsave(filename="figures/figS4.png",power_pop_sympt[[3]],height=7,width=5.5,units="in",dpi=300)
 
 power_pop_sympt_lm <- p_sim_ct_compare_power_symp_regression(ct_dist_symptomatic_dat %>% filter(ct < 40), 
                             samp_time=270,trials=500,samp_size=samp_sizes,
                             true_peak_diff=vl_pars_both["viral_peak"]-vl_pars["viral_peak"])
-ggsave(filename="figures/fig8.png",power_pop_sympt_lm[[3]],height=7,width=5.5,units="in",dpi=300)
+ggsave(filename="figures/figS5.png",power_pop_sympt_lm[[3]],height=7,width=5.5,units="in",dpi=300)
