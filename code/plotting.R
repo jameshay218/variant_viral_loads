@@ -726,7 +726,19 @@ p_sim_ct_compare_power_symp_regression <- function(ct_dist_symptomatic_dat, samp
   list(all_results,all_results_summary,p_main)
 }
 
-p_compare_estimated_curves <- function(chain,ages=1:35,N=1000, nsamp=100){
+p_compare_estimated_curves <- function(chain,ages=1:35,N=1000, nsamp=100,true_pars1=NULL,true_pars2=NULL){
+  ## If passed to function, get the true modal viral kinetics curve
+  if(!is.null(true_pars1)){
+    vl1 <- viral_load_func(true_pars1, ages)
+    vl2 <- viral_load_func(true_pars2, ages)
+    
+    ## Modal Ct values
+    true_modal_ct1 <- tibble(ct=vl1,age=ages,virus="Original variant")
+    true_modal_ct2 <- tibble(ct=vl2,age=ages,virus="New variant")
+    true_modal_cts <- bind_rows(true_modal_ct1,true_modal_ct2)
+  }
+  
+  
   samps <- sample(chain$sampno,size=nsamp)
   modal_ct_all <- NULL
   sim_cts_all <- NULL
@@ -755,12 +767,12 @@ p_compare_estimated_curves <- function(chain,ages=1:35,N=1000, nsamp=100){
     
     ## Modal Ct values
     modal_ct1 <- tibble(ct=vl1,age=ages,virus="Original variant")
-    modal_ct2 <- tibble(ct=vl2,age=ages,virus="New variant, different kinetics")
+    modal_ct2 <- tibble(ct=vl2,age=ages,virus="New variant")
     modal_ct_all[[i]] <- bind_rows(modal_ct1,modal_ct2) %>% mutate(virus=factor(virus,levels=variant_levels)) %>% mutate(samp=samp)
     
     ## Simulate Ct values
     sim_cts1 <- virosolver::simulate_viral_loads_example(ages,pars_tmp,N) %>% mutate(virus="Original variant")
-    sim_cts2 <- virosolver::simulate_viral_loads_example(ages,pars_tmp_variant,N)%>% mutate(virus="New variant, different kinetics")
+    sim_cts2 <- virosolver::simulate_viral_loads_example(ages,pars_tmp_variant,N)%>% mutate(virus="New variant")
     sim_cts_all[[i]] <- bind_rows(sim_cts1, sim_cts2) %>% mutate(virus=factor(virus,levels=variant_levels)) %>% mutate(samp=samp)
   }
   
@@ -770,11 +782,10 @@ p_compare_estimated_curves <- function(chain,ages=1:35,N=1000, nsamp=100){
   modal_ct_summaries <- modal_ct_all %>% group_by(age, virus) %>% summarize(mean_ct=mean(ct),lower_50=quantile(ct,0.25),upper_50=quantile(ct,0.75),
                                                                             lower_95=quantile(ct,0.025),upper_95=quantile(ct,0.975))
   
-  
   p <- ggplot(sim_cts_all %>% filter(ct < 40)) + 
     #geom_rect(ymin=42,ymax=vl_pars["intercept"],xmin=-1,xmax=max(ages)+1,fill="grey70",alpha=0.25) +
     #geom_jitter(aes(x=age,y=ct,col=virus),alpha=0.25,height=0,width=0.25,size=0.2) + 
-    geom_ribbon(data=modal_ct_summaries,aes(x=age,ymin=lower_50,ymax=upper_50,fill=virus,col=virus),alpha=0.5,size=0.2,linetype="dashed") +
+    geom_ribbon(data=modal_ct_summaries,aes(x=age,ymin=lower_50,ymax=upper_50,fill=virus),alpha=0.5) +
     geom_ribbon(data=modal_ct_summaries,aes(x=age,ymin=lower_95,ymax=upper_95,fill=virus),alpha=0.1) +
     geom_line(data=modal_ct_summaries,aes(x=age,y=mean_ct,col=virus)) +
     coord_flip()+
@@ -783,7 +794,102 @@ p_compare_estimated_curves <- function(chain,ages=1:35,N=1000, nsamp=100){
     variant_color_scale + variant_fill_scale +
     xlab("Time since infection") + ylab("Ct value") +
     theme_overall + theme_nice_axes + theme(legend.position=c(0.7,0.8))
+  
+  if(!is.null(true_pars1)){
+    p <- p +
+      geom_line(data=true_modal_cts,aes(x=age,y=ct,col=virus),linetype="dashed")
+  }
+  
   return(p)
+}
+
+
+plot_virosolver_comparisons <- function(chain, true_vals, real_scales, real_v1_gr, real_v2_gr){
+  chain$beta_diff <- chain$beta_alt - chain$beta
+  chain_grs <- chain %>% dplyr::select(sampno, beta, beta_alt,beta_diff) %>% pivot_longer(-sampno)
+  gr_key <- c("beta"="Original variant","beta_alt"="New variant", "beta_diff"="Difference")
+  chain_grs$name <- gr_key[chain_grs$name]
+  chain_grs$name <- factor(chain_grs$name,levels=c("Original variant","New variant","Difference"))
+ 
+  p1 <- ggplot(chain_grs) + 
+    geom_hline(yintercept=0,linetype="dashed")+
+    geom_violin(aes(x=name,y=value,fill=name),alpha=0.5,draw_quantiles=c(0.025,0.5,0.975)) + 
+    geom_point(data=true_vals,aes(x=name,y=gr,col=name)) +
+    variant_fill_scale + variant_color_scale +
+    theme_overall +
+    scale_y_continuous(limits=c(-0.25,0.25),breaks=seq(-0.5,0.5,by=0.1)) +
+    ylab("Growth rate estimate") +
+    xlab("")
+  
+  chain_scales <- chain %>% dplyr::select(sampno, viral_peak_scale, t_switch_scale) %>% pivot_longer(-sampno)
+  scale_key <- c("viral_peak_scale"="Relative peak\n Ct value","t_switch_scale"="Relative duration\n of initial waning")
+  chain_scales$name <- scale_key[chain_scales$name]
+  
+  p2 <- ggplot(chain_scales) + 
+    geom_hline(yintercept=1,linetype="dashed")+
+    geom_violin(aes(x=name,y=value),alpha=0.5,draw_quantiles=c(0.025,0.5,0.975),fill="red") + 
+    geom_point(data=real_scales,aes(x=name,y=value)) +
+    #scale_y_continuous(limits=c(0,7)) +
+    scale_y_log10() +
+    theme_overall +
+    ylab("Relative value of new variant") +
+    xlab("")
+  
+  
+  v1_preds <- virosolver::plot_prob_infection(chain, 1000,exponential_growth_model, 0:35,true_prob_infection = real_v1_gr)
+  v1_preds_quants <- v1_preds$predictions %>% group_by(t) %>% summarize(lower95=quantile(prob_infection,0.025),lower50=quantile(prob_infection,0.25),
+                                                                        median=median(prob_infection),
+                                                                        upper50=quantile(prob_infection,0.75),upper95=quantile(prob_infection,0.975)) 
+  p_v1_preds <- ggplot(v1_preds_quants) + 
+    geom_ribbon(aes(x=t,ymin=lower95,ymax=upper95),fill="blue",alpha=0.1) +
+    geom_ribbon(aes(x=t,ymin=lower50,ymax=upper50),fill="blue",alpha=0.5) +
+    geom_line(aes(x=t,y=median),col="blue") +
+    geom_line(data=real_v1_gr,aes(x=t,y=prob_infection),linetype="dashed",col="black",size=0.75) +
+    scale_y_continuous(limits=c(0,0.25)) +
+    theme_overall +
+    ylab("Original variant growth rate") +
+    theme_no_x_axis
+  
+  chain1 <- chain
+  chain1$beta <- chain1$beta_alt
+  v2_preds <- virosolver::plot_prob_infection(chain1, 1000,exponential_growth_model, 0:35,true_prob_infection = real_v2_gr)
+  v2_preds_quants <- v2_preds$predictions %>% group_by(t) %>% summarize(lower95=quantile(prob_infection,0.025),lower50=quantile(prob_infection,0.25),
+                                                                        median=median(prob_infection),
+                                                                        upper50=quantile(prob_infection,0.75),upper95=quantile(prob_infection,0.975)) 
+  p_v2_preds <- ggplot(v2_preds_quants) + 
+    geom_ribbon(aes(x=t,ymin=lower95,ymax=upper95),fill="red",alpha=0.1) +
+    geom_ribbon(aes(x=t,ymin=lower50,ymax=upper50),fill="red",alpha=0.5) +
+    geom_line(aes(x=t,y=median),col="red") +
+    geom_line(data=real_v2_gr,aes(x=t,y=prob_infection),linetype="dashed",col="black",size=0.75) +
+    scale_y_continuous(limits=c(0,0.25)) +
+    theme_overall+
+    ylab("New variant growth rate") +
+    xlab("Time (35 days prior to sample)")
+  
+  v1_preds_quants$virus <- "Original variant"
+  v2_preds_quants$virus <- "New variant"
+  
+  v_preds_comb <- bind_rows(v1_preds_quants,v2_preds_quants)
+  
+  real_grs_comb <- bind_rows(real_v1_gr %>% mutate(virus="Original variant"),
+                             real_v2_gr %>% mutate(virus="New variant"))
+  
+  
+  p_comb_preds <- ggplot(v_preds_comb) + 
+    geom_ribbon(aes(x=t,ymin=lower95,ymax=upper95,fill=virus),alpha=0.1) +
+    #geom_ribbon(aes(x=t,ymin=lower50,ymax=upper50,fill=virus),alpha=0.5) +
+    geom_line(aes(x=t,y=median,col=virus)) +
+    variant_color_scale + variant_fill_scale +
+    geom_line(data=real_grs_comb,aes(x=t,y=prob_infection,col=virus),linetype="dashed",size=0.75) +
+    #geom_line(data=real_v2_gr,aes(x=t,y=prob_infection),linetype="dashed",col="black",size=0.75) +
+    theme_overall+
+    theme_nice_axes +
+    theme(legend.position="none") +
+    scale_x_continuous(breaks=seq(0,35,by=5),labels=rev(0-seq(0,35,by=5))) +
+    ylab("Relative probability of infection") +
+    xlab("Days (relative to sample date)")
+  
+  return(p_comb_preds)
 }
 
 

@@ -1,8 +1,11 @@
 ###############################################
 ## DISTINGUISHING GROWTH RATES AND VIRAL KINETICS FROM VARIANTS
+## - Simulates Ct values for two variants with different viral kinetics and growth rates
+## - Simulate samples taken under random cross-sectional surveillance early on when two viruses
+## - are seeded at the same time, or later on if one variant is seeded later than the other.
+## - Uses virosolver to try to estimate the variant-specific growth rate and kinetics parameters
 ## James Hay
 ## jhay@hsph.harvard.edu
-## June 8, 2021
 ###############################################
 library(virosolver)
 library(tidyverse)
@@ -10,34 +13,68 @@ library(patchwork)
 library(extraDistr)
 library(virosolver)
 library(ggpubr)
+library(doParallel)
 #library(lazymcmc)
 devtools::load_all("~/Documents/GitHub/lazymcmc/")
 library(rethinking)
+
 ## Where to perform the simulations
 HOME_WD <- "~"
-HOME_WD <- "~/Documents/GitHub/variant_viral_loads/"
-setwd(HOME_WD)
+HOME_WD <- "~/Documents/GitHub/"
+setwd(paste0(HOME_WD,"/variant_viral_loads"))
 
+## Set up cluster for parallel chains
+n_clusters <- 9
+cl <- parallel::makeCluster(n_clusters, setup_strategy = "sequential")
+registerDoParallel(cl)
+
+###############################################
+## KEY ASSUPTIONS
+###############################################
+## Assume individuals can stay detectable for up to 35 days
+lastday <- 35
+
+## Day of the simulation where the early and late samples are taken
+samp_time_early <- 50
+samp_time_late <- 270
+
+## How much lower is the peak Ct of the new variant?
+ct_diff <- 5
+## How many more days does it take for the new variant to be cleared?
+tswitch_diff <- 5
+
+## How many Ct values to simulate at each sample time?
+sample_size <- 100
+
+## MCMC settings
+nchains <- 3
+n_temperatures <- 10
+mcmcPars_ct_pt <- list("iterations"=50000,"popt"=0.234,"opt_freq"=1000,
+                       "thin"=100,"adaptive_period"=50000,"save_block"=1000,
+                       "temperature" = seq(1,101,length.out=n_temperatures),
+                       "parallel_tempering_iter" = 5,"max_adaptive_period" = 50000, 
+                       "adaptiveLeeway" = 0.2, "max_total_iterations" = 50000)
 
 ###############################################
 ## 1) SEIR SIMULATION
 ###############################################
 ## SEIR parameters
-pars <- c(sigma1.val = 0,#1/(45*7*2), ## Immune waning to strain 1
+pars_same_seed <- c(sigma1.val = 0,#1/(45*7*2), ## Immune waning to strain 1
           sigma2.val = 0,#1/(45*7*2), ## Immune waning to strain 2
           nu.val = 1/3, ## Latent period
           gamma.val = 1/7, ## Infectious period
           chi12.val = 0.75, ## Cross immunity strain 1 confers against strain 2
           chi21.val = 0.75, ## Cross immunity strain 2 confers against strain 1
-          #amplitude = 0, 
-          #baseline = 3, 
-          #phi.val = 0, 
           beta.val1=1.5/7, ## Transmission rate of strain 1 (R0*gamma)
           beta.val2=2.5/7, ## Transmission rate of strain 2 (R0*gamma)
           kappa.val = 1/100000, ## Daily importation rate of infected individuals
           importtime1 = 0, ## Time of importation of strain 1
           importtime2 = 0, ## Time of importation of strain 2
           importlength = 7) ## Duration of importations
+
+## Parameters with new variant being seeded at the same time or later on
+pars_late_seed <- pars_same_seed
+pars_late_seed["importtime2"] <- 180
 
 states <- c(S1S2 = 1,E1S2 = 0,S1E2 = 0,E1E2 = 0,I1S2 = 0, 
             S1I2 = 0, R1S2 = 0,I1E2 = 0, E1I2 = 0, S1R2 = 0, 
@@ -46,69 +83,120 @@ states <- c(S1S2 = 1,E1S2 = 0,S1E2 = 0,E1E2 = 0,I1S2 = 0,
 
 times <- seq(0, 365*1.5,by=1) ## Run model for 1.5 years
 
-seir_dynamics <- run_2strain_seir_simulation(pars, states,times)
-virus1_inc <- seir_dynamics$virus1_inc
-virus2_inc <- seir_dynamics$virus2_inc
-virus_inc <- virus1_inc + virus2_inc
 
-gr1 <- tibble(t=times,gr=c(0,log(virus1_inc[2:length(virus1_inc)]/virus1_inc[1:(length(virus1_inc)-1)])),inc=virus1_inc,virus="Original variant")
-gr2 <- tibble(t=times,gr=c(0,log(virus2_inc[2:length(virus2_inc)]/virus2_inc[1:(length(virus2_inc)-1)])),inc=virus_inc,virus="New variant, same kinetics")
-gr2_alt <- tibble(t=times,gr=c(0,log(virus2_inc[2:length(virus2_inc)]/virus2_inc[1:(length(virus2_inc)-1)])),inc=virus_inc,virus="New variant, different kinetics")
-gr_overall <- tibble(t=times,gr=c(0,log(virus_inc[2:length(virus_inc)]/virus_inc[1:(length(virus_inc)-1)])),inc=virus_inc,virus="Overall")
-grs <- bind_rows(gr1, gr2,gr2_alt,gr_overall)
+########################################################
+## A) SEIR SIMULATION if seeded at the same time 
+## Solve SEIR model and pull out variant-specific incidence curves
+seir_dynamics_same <- run_2strain_seir_simulation(pars_same_seed, states,times)
+virus1_inc_same <- seir_dynamics_same$virus1_inc
+virus2_inc_same <- seir_dynamics_same$virus2_inc
+virus_inc_same <- virus1_inc_same + virus2_inc_same
 
-## Assume individuals can stay detectable for up to 35 days
-lastday <- 35
+## Calculate daily growth rates of the viruses
+gr1_same <- tibble(t=times,gr=c(0,log(virus1_inc_same[2:length(virus1_inc_same)]/virus1_inc_same[1:(length(virus1_inc_same)-1)])),inc=virus1_inc_same,virus="Original variant")
+gr2_same <- tibble(t=times,gr=c(0,log(virus2_inc_same[2:length(virus2_inc_same)]/virus2_inc_same[1:(length(virus2_inc_same)-1)])),inc=virus2_inc_same,virus="New variant")
+gr_overall_same <- tibble(t=times,gr=c(0,log(virus_inc_same[2:length(virus_inc_same)]/virus_inc_same[1:(length(virus_inc_same)-1)])),inc=virus_inc_same,virus="Overall")
+grs_same <- bind_rows(gr1_same, gr2_same,gr_overall_same)
+
+## Find the average 35-day growth rate in the scenario with seeding on the same day
+tmp1_same <- (virus1_inc_same[seq(samp_time_early-lastday,samp_time_early,by=1)])
+mean_gr_virus1_same <- mean(log(tmp1_same[2:length(tmp1_same)]/tmp1_same[1:(length(tmp1_same)-1)]))
+tmp2_same <- (virus2_inc_same[seq(samp_time_early-lastday,samp_time_early,by=1)])
+mean_gr_virus2_same <- mean(log(tmp2_same[2:length(tmp2_same)]/tmp2_same[1:(length(tmp2_same)-1)]))
+
+## Put true values into tibble for later plotting
+true_vals_same <- tibble(gr=c(mean_gr_virus1_same,mean_gr_virus2_same,mean_gr_virus2_same-mean_gr_virus1_same),
+                         name=c("Original variant","New variant","Difference")) 
+true_vals_same$name <- factor(true_vals_same$name,levels=c("Original variant","New variant","Difference"))
+real_v1_gr_same <- tibble(t=0:lastday,prob_infection=tmp1_same/sum(tmp1_same))
+real_v2_gr_same <- tibble(t=0:lastday,prob_infection=tmp2_same/sum(tmp2_same))
+
+########################################################
+## B) SEIR SIMULATION if seeded at a later time
+## Solve SEIR model and pull out variant-specific incidence curves
+seir_dynamics_late <- run_2strain_seir_simulation(pars_late_seed, states,times)
+virus1_inc_late <- seir_dynamics_late$virus1_inc
+virus2_inc_late <- seir_dynamics_late$virus2_inc
+virus_inc_late <- virus1_inc_late + virus2_inc_late
+
+## Calculate daily growth rates of the viruses
+gr1_late <- tibble(t=times,gr=c(0,log(virus1_inc_late[2:length(virus1_inc_late)]/virus1_inc_late[1:(length(virus1_inc_late)-1)])),inc=virus1_inc_late,virus="Original variant")
+gr2_late <- tibble(t=times,gr=c(0,log(virus2_inc_late[2:length(virus2_inc_late)]/virus2_inc_late[1:(length(virus2_inc_late)-1)])),inc=virus2_inc_late,virus="New variant")
+gr_overall_late <- tibble(t=times,gr=c(0,log(virus_inc_late[2:length(virus_inc_late)]/virus_inc_late[1:(length(virus_inc_late)-1)])),inc=virus_inc_late,virus="Overall")
+grs_late <- bind_rows(gr1_late, gr2_late,gr_overall_late)
+
+## Find the average 35-day growth rate in the scenario with seeding on the same day
+tmp1_late <- (virus1_inc_late[seq(samp_time_late-lastday,samp_time_late,by=1)])
+mean_gr_virus1_late <- mean(log(tmp1_late[2:length(tmp1_late)]/tmp1_late[1:(length(tmp1_late)-1)]))
+tmp2_late <- (virus2_inc_late[seq(samp_time_late-lastday,samp_time_late,by=1)])
+mean_gr_virus2_late <- mean(log(tmp2_late[2:length(tmp2_late)]/tmp2_late[1:(length(tmp2_late)-1)]))
+
+## Put true values into tibble for later plotting
+true_vals_late <- tibble(gr=c(mean_gr_virus1_late,mean_gr_virus2_late,mean_gr_virus2_late-mean_gr_virus1_late),
+                         name=c("Original variant","New variant","Difference")) 
+true_vals_late$name <- factor(true_vals_late$name,levels=c("Original variant","New variant","Difference"))
+real_v1_gr_late <- tibble(t=0:lastday,prob_infection=tmp1_late/sum(tmp1_late))
+real_v2_gr_late <- tibble(t=0:lastday,prob_infection=tmp2_late/sum(tmp2_late))
+
+
+###############################################
+## 2) VIRAL KINETICS
+###############################################
 ages <- 1:lastday
 
 model_pars <- read.csv("pars/partab_seir_model.csv")
 vl_pars <- model_pars$values
 names(vl_pars) <- model_pars$names
-vl_pars["tshift"] <- 1
-vl_pars["true_0"] <- 45
-vl_pars["desired_mode"] <- 4
-## Have version with lower peak Ct
-vl_pars_peak <- vl_pars
-vl_pars_peak["viral_peak"] <- vl_pars_peak["viral_peak"] - 5
-
-## Have version with more persistent Cts
-vl_pars_persistent <- vl_pars
-vl_pars_persistent["t_switch"] <- vl_pars_persistent["t_switch"] + 5
 
 ## Have version with both persistent and lower Cts
 vl_pars_both <- vl_pars
-vl_pars_both["t_switch"] <- vl_pars_both["t_switch"] + 5
-vl_pars_both["viral_peak"] <- vl_pars_both["viral_peak"] - 5
+vl_pars_both["t_switch"] <- vl_pars_both["t_switch"] + tswitch_diff
+vl_pars_both["viral_peak"] <- vl_pars_both["viral_peak"] - ct_diff
 
-samp_time <- 50
 vl_pars1 <- vl_pars
 vl_pars2 <- vl_pars_both
-cts_1 <- tibble(ct=simulate_cross_section(vl_pars1, ages, virus1_inc,obs_time=samp_time,N=100),variant="Original variant")
-cts_2 <- tibble(ct=simulate_cross_section(vl_pars2, ages, virus2_inc,obs_time=samp_time,N=100),variant="New variant, different kinetics")
-cts_sim_comb <- bind_rows(cts_1,cts_2) %>% mutate(t=35)
-cts_sim_comb$virus <- factor(cts_sim_comb$variant,levels=variant_levels)
-p_ct_samp <- ggplot(cts_sim_comb) + 
-  geom_violin(aes(x=virus,y=ct,fill=virus),alpha=0.1,trim=FALSE,col=NA,width=0.75) +
-  geom_dotplot(aes(x=virus,y=ct,fill=virus),binaxis="y",stackdir="center",binwidth=1,dotsize=1) + 
-  geom_errorbar(data=cts_sim_comb%>%group_by(virus)%>%summarize(median_ct=median(ct)),
-                aes(y=median_ct,ymin=median_ct,ymax=median_ct,x=virus),size=0.5,col="grey10") +
-  variant_fill_scale + variant_color_scale +
-  scale_y_continuous(trans="reverse",limits=c(40,7)) +
-  ylab("Ct value") +
-  theme_overall + theme_nice_axes + theme(legend.position="none",axis.title.x=element_blank(),plot.title=element_text(size=7)) +
-  scale_x_discrete(labels = c("Original variant" = "Original variant",
-                              "New variant, different kinetics"="New variant,\ndifferent kinetics")) 
 
+## Tibble for later plotting with true ratio of viral kinetics parameters
+scale_key <- c("viral_peak_scale"="Relative peak\n Ct value","t_switch_scale"="Relative duration\n of initial waning")
+real_scales <- tibble(name=scale_key,value=c(vl_pars2["viral_peak"]/vl_pars1["viral_peak"], vl_pars2["t_switch"]/vl_pars1["t_switch"]))
 
-tmp1 <- (virus1_inc[seq(samp_time-35,samp_time,by=1)])
-mean_gr_virus1 <- mean(log(tmp1[2:length(tmp1)]/tmp1[1:(length(tmp1)-1)]))
-tmp2 <- (virus2_inc[seq(samp_time-35,samp_time,by=1)])
-mean_gr_virus2 <- mean(log(tmp2[2:length(tmp2)]/tmp2[1:(length(tmp2)-1)]))
+########################################################
+## A) SIMULATE CT VALUES if seeded at the same time
+cts_1_same <- tibble(ct=simulate_cross_section(vl_pars1, ages, virus1_inc_same,obs_time=samp_time_early,N=sample_size),variant="Original variant")
+cts_2_same <- tibble(ct=simulate_cross_section(vl_pars2, ages, virus2_inc_same,obs_time=samp_time_early,N=sample_size),variant="New variant")
+cts_sim_comb_same <- bind_rows(cts_1_same,cts_2_same) %>% mutate(t=lastday)
+cts_sim_comb_same$virus <- factor(cts_sim_comb_same$variant,levels=variant_levels)
 
+## Dotplot of the simulated Ct values
+## Define a temporary function
+TMP_dotplot_function <- function(ct_data){
+  p <- ggplot(ct_data) + 
+    geom_violin(aes(x=virus,y=ct,fill=virus),alpha=0.1,trim=FALSE,col=NA,width=0.75) +
+    geom_dotplot(aes(x=virus,y=ct,fill=virus),binaxis="y",stackdir="center",binwidth=1,dotsize=1) + 
+    geom_errorbar(data=cts_sim_comb_same%>%group_by(virus)%>%summarize(median_ct=median(ct)),
+                  aes(y=median_ct,ymin=median_ct,ymax=median_ct,x=virus),size=0.5,col="grey10") +
+    variant_fill_scale + variant_color_scale +
+    scale_y_continuous(trans="reverse",limits=c(40,7)) +
+    ylab("Ct value") +
+    theme_overall + theme_nice_axes + theme(legend.position="none",axis.title.x=element_blank(),plot.title=element_text(size=7)) +
+    scale_x_discrete(labels = c("Original variant" = "Original variant",
+                                "New variant"="New variant")) 
+}
+## Call this function
+p_ct_samp_same <- TMP_dotplot_function(cts_sim_comb_same)
 
-grs %>% filter(t <= samp_time & t >= (samp_time-35)) %>% ggplot() + geom_line(aes(x=t,y=gr,col=virus))
+## B) SIMULATE CT VALUES if seeded at a later time
+cts_1_late <- tibble(ct=simulate_cross_section(vl_pars1, ages, virus1_inc_late,obs_time=samp_time_late,N=100),variant="Original variant")
+cts_2_late <- tibble(ct=simulate_cross_section(vl_pars2, ages, virus2_inc_late,obs_time=samp_time_late,N=100),variant="New variant")
+cts_sim_comb_late <- bind_rows(cts_1_late,cts_2_late) %>% mutate(t=35)
+cts_sim_comb_late$virus <- factor(cts_sim_comb_late$variant,levels=variant_levels)
 
+## Dotplot of the simulated Ct values
+p_ct_samp_late <- TMP_dotplot_function(cts_sim_comb_late)
 
+###############################################
+## 3) VIROSOLVER SETUP
+###############################################
 virosolver_pars <- read.csv("pars/partab_exp_model_compare.csv")
 
 pars <- virosolver_pars$values
@@ -123,8 +211,7 @@ sds_gp <- c("obs_sd"=0.5,"viral_peak"=2,
             "wane_rate2"=1,"t_switch"=3,"level_switch"=1,
             "prob_detect"=0.03,
             "incubation"=0.25, "infectious"=0.5)
-
-
+## Define prior function
 prior_func <- function(pars, ...){
   par_names <- names(pars)
   
@@ -145,152 +232,92 @@ prior_func <- function(pars, ...){
   gr_prior2 <- dnorm(pars["beta_alt"],0,sd=0.1,log=TRUE)
   #########
   
-  ## Scale priors
+  ## Scale priors, log normal centered on 1
   peak_ct_scale_prior <- dlnorm(pars["viral_peak_scale"],log(1),sd=0.5)
   tswitch_scale_prior <- dlnorm(pars["t_switch_scale"],log(1),sd=0.5)
-  
   
   obs_sd_prior + viral_peak_prior + wane_2_prior + tswitch_prior +
     level_prior + beta_prior + gr_prior + gr_prior2 + 
     peak_ct_scale_prior + tswitch_scale_prior
 }
 
-
-f <- create_posterior_func_compare(parTab=virosolver_pars,data=cts_sim_comb,PRIOR_FUNC = prior_func,INCIDENCE_FUNC=virosolver::exponential_growth_model,use_pos = TRUE)
-f(virosolver_pars$values)
-
-#mcmc_pars <- c("iterations"=100000,"popt"=0.44,"opt_freq"=2000,
-#               "thin"=10,"adaptive_period"=50000,"save_block"=1000)
-
-
-n_temperatures <- 10
-mcmcPars_ct_pt <- list("iterations"=50000,"popt"=0.234,"opt_freq"=1000,
-                       "thin"=1,"adaptive_period"=50000,"save_block"=1000,
-                       "temperature" = seq(1,101,length.out=n_temperatures),
-                       "parallel_tempering_iter" = 5,"max_adaptive_period" = 50000, 
-                       "adaptiveLeeway" = 0.2, "max_total_iterations" = 50000)
-
-#virosolver_pars[!(virosolver_pars$names %in% c("beta","beta_alt","viral_peak_scale","t_switch_scale")),"fixed"] <- 1
+## Test that posterior functions work correctly
+f1 <- create_posterior_func_compare(parTab=virosolver_pars,data=cts_sim_comb_same,PRIOR_FUNC = prior_func,
+                                   INCIDENCE_FUNC=virosolver::exponential_growth_model,use_pos = TRUE)
+f1(virosolver_pars$values)
+f2 <- create_posterior_func_compare(parTab=virosolver_pars,data=cts_sim_comb_late,PRIOR_FUNC = prior_func,
+                                   INCIDENCE_FUNC=virosolver::exponential_growth_model,use_pos = TRUE)
+f2(virosolver_pars$values)
 
 
-startTab <- rep(list(virosolver_pars),n_temperatures)
-for(k in 1:length(startTab)){
-  startTab[[k]] <- generate_viable_start_pars(parTab=virosolver_pars,
-                                              obs_dat=cts_sim_comb,
-                                              CREATE_POSTERIOR_FUNC=create_posterior_func_compare,
-                                              INCIDENCE_FUNC=virosolver::exponential_growth_model,
-                                              PRIOR_FUNC=prior_func,
-                                              use_pos=TRUE,
-                                              t_dist=NULL)
-}
-covMat <- diag(nrow(startTab[[1]]))
-mvrPars <- list(covMat,2.38/sqrt(nrow(startTab[[1]][startTab[[1]]$fixed==0,])),w=0.8)
-mvrPars <- rep(list(mvrPars), n_temperatures)
+data_list <- rep(list(cts_sim_comb_same,cts_sim_comb_late,cts_sim_comb_same),each=nchains)
+runnames <- rep(c("virosolver_same", "virosolver_late","virosolver_same_fixed_pars"),each=nchains)
+chain_nos <- rep(1:nchains,3)
 
-
-output <- run_MCMC(parTab=startTab,
-                   data=cts_sim_comb,
-                   INCIDENCE_FUNC=virosolver::exponential_growth_model,
-                   PRIOR_FUNC=prior_func,
-                   mcmcPars=mcmcPars_ct_pt,
-                   filename="chains/example",
-                   CREATE_POSTERIOR_FUNC=create_posterior_func_compare,
-                   mvrPars=mvrPars,
-                   OPT_TUNING=0.2,
-                   use_pos=TRUE,
-                   solve_likelihood=TRUE)
-
-chain <- read.csv(output$file)
-chain <- chain[chain$sampno > mcmcPars_ct_pt["adaptive_period"],]
-chain$beta_diff <- chain$beta_alt - chain$beta
-chain_grs <- chain %>% dplyr::select(sampno, beta, beta_alt,beta_diff) %>% pivot_longer(-sampno)
-gr_key <- c("beta"="Original variant","beta_alt"="New variant", "beta_diff"="Difference")
-chain_grs$name <- gr_key[chain_grs$name]
-chain_grs$name <- factor(chain_grs$name,levels=c("Original variant","New variant","Difference"))
-true_vals <- tibble(gr=c(mean_gr_virus1,mean_gr_virus2,mean_gr_virus2-mean_gr_virus1),name=c("Original variant","New variant","Difference")) 
-true_vals$name <- factor(true_vals$name,levels=c("Original variant","New variant","Difference"))
-
-p1 <- ggplot(chain_grs) + 
-  geom_hline(yintercept=0,linetype="dashed")+
-  geom_violin(aes(x=name,y=value,fill=name),alpha=0.5,draw_quantiles=c(0.025,0.5,0.975)) + 
-  geom_point(data=true_vals,aes(x=name,y=gr,col=name)) +
-  variant_fill_scale + variant_color_scale +
-  theme_overall +
-  scale_y_continuous(limits=c(-0.25,0.25),breaks=seq(-0.5,0.5,by=0.1)) +
-  ylab("Growth rate estimate") +
-  xlab("")
-
-
-chain_scales <- chain %>% dplyr::select(sampno, viral_peak_scale, t_switch_scale) %>% pivot_longer(-sampno)
-scale_key <- c("viral_peak_scale"="Relative peak\n Ct value","t_switch_scale"="Relative duration\n of initial waning")
-chain_scales$name <- scale_key[chain_scales$name]
-real_scales <- tibble(name=scale_key,value=c(vl_pars2["viral_peak"]/vl_pars1["viral_peak"], vl_pars2["t_switch"]/vl_pars1["t_switch"]))
-p2 <- ggplot(chain_scales) + 
-  geom_hline(yintercept=1,linetype="dashed")+
-  geom_violin(aes(x=name,y=value),alpha=0.5,draw_quantiles=c(0.025,0.5,0.975),fill="red") + 
-  geom_point(data=real_scales,aes(x=name,y=value)) +
-  #scale_y_continuous(limits=c(0,7)) +
-  scale_y_log10() +
-  theme_overall +
-  ylab("Relative value of new variant") +
-  xlab("")
-
-
-real_v1_gr <- tibble(t=0:35,prob_infection=tmp1/sum(tmp1))
-v1_preds <- virosolver::plot_prob_infection(chain, 1000,exponential_growth_model, 0:35,true_prob_infection = real_v1_gr)
-v1_preds_quants <- v1_preds$predictions %>% group_by(t) %>% summarize(lower95=quantile(prob_infection,0.025),lower50=quantile(prob_infection,0.25),
-                                                   median=median(prob_infection),
-                                                   upper50=quantile(prob_infection,0.75),upper95=quantile(prob_infection,0.975)) 
-p_v1_preds <- ggplot(v1_preds_quants) + 
-  geom_ribbon(aes(x=t,ymin=lower95,ymax=upper95),fill="blue",alpha=0.1) +
-  geom_ribbon(aes(x=t,ymin=lower50,ymax=upper50),fill="blue",alpha=0.5) +
-  geom_line(aes(x=t,y=median),col="blue") +
-  geom_line(data=real_v1_gr,aes(x=t,y=prob_infection),linetype="dashed",col="black",size=0.75) +
-  theme_overall +
-  ylab("Original variant growth rate") +
-  theme_no_x_axis
+chains <- NULL
+res <- foreach(j=seq_along(chain_nos),.packages = c("extraDistr","tidyverse","patchwork","virosolver")) %dopar% {
+  devtools::load_all(paste0(HOME_WD,"/lazymcmc"))
   
+  data_use <- data_list[[j]]
+  chain_no <- chain_nos[j]
+  runname <- runnames[j]
+  
+  if(!file.exists(paste0("chains/",runname))){
+    dir.create(paste0("chains/",runname))
+  }
+  
+  tmp_pars <- virosolver_pars
+  if(runname == "virosolver_same_fixed_pars"){
+    tmp_pars[!(tmp_pars$names %in% c("beta","beta_alt","viral_peak_scale","t_switch_scale")),"fixed"] <- 1
+  }
+  startTab <- rep(list(tmp_pars),n_temperatures)
+  for(k in 1:length(startTab)){
+    startTab[[k]] <- generate_viable_start_pars(parTab=tmp_pars,
+                                                obs_dat=data_use,
+                                                CREATE_POSTERIOR_FUNC=create_posterior_func_compare,
+                                                INCIDENCE_FUNC=virosolver::exponential_growth_model,
+                                                PRIOR_FUNC=prior_func,
+                                                use_pos=TRUE,
+                                                t_dist=NULL)
+  }
+  covMat <- diag(nrow(startTab[[1]]))
+  mvrPars <- list(covMat,2.38/sqrt(nrow(startTab[[1]][startTab[[1]]$fixed==0,])),w=0.8)
+  mvrPars <- rep(list(mvrPars), n_temperatures)
+  
+  output <- run_MCMC(parTab=startTab,
+                     data=data_use,
+                     INCIDENCE_FUNC=virosolver::exponential_growth_model,
+                     PRIOR_FUNC=prior_func,
+                     mcmcPars=mcmcPars_ct_pt,
+                     filename=paste0("chains/",runname,"/",runname,"_",chain_no),
+                     CREATE_POSTERIOR_FUNC=create_posterior_func_compare,
+                     mvrPars=mvrPars,
+                     OPT_TUNING=0.2,
+                     use_pos=TRUE,
+                     solve_likelihood=TRUE)
+  
+  ## Read in chain and remove burn in period
+  chain <- read.csv(output$file)
+  chain <- chain[chain$sampno > mcmcPars_ct_pt["adaptive_period"],]
+  chain$sampno <-chain$sampno + max(chain$sampno)*(chain_no-1)
+  chains[[j]] <- chain
+}
+chains_same <- do.call("bind_rows",res[1:nchains])
+chains_late <- do.call("bind_rows",res[(nchains+1):(nchains+nchains)])
+chains_fixed <- do.call("bind_rows",res[(nchains+nchains+1):(3*nchains)])
 
-chain1 <- chain
-chain1$beta <- chain1$beta_alt
-real_v2_gr <- tibble(t=0:35,prob_infection=tmp2/sum(tmp2))
-v2_preds <- virosolver::plot_prob_infection(chain1, 1000,exponential_growth_model, 0:35,true_prob_infection = real_v2_gr)
-v2_preds_quants <- v2_preds$predictions %>% group_by(t) %>% summarize(lower95=quantile(prob_infection,0.025),lower50=quantile(prob_infection,0.25),
-                                                                      median=median(prob_infection),
-                                                                      upper50=quantile(prob_infection,0.75),upper95=quantile(prob_infection,0.975)) 
-p_v2_preds <- ggplot(v2_preds_quants) + 
-  geom_ribbon(aes(x=t,ymin=lower95,ymax=upper95),fill="red",alpha=0.1) +
-  geom_ribbon(aes(x=t,ymin=lower50,ymax=upper50),fill="red",alpha=0.5) +
-  geom_line(aes(x=t,y=median),col="red") +
-  geom_line(data=real_v2_gr,aes(x=t,y=prob_infection),linetype="dashed",col="black",size=0.75) +
-  theme_overall+
-  ylab("New variant growth rate") +
-  xlab("Time (35 days prior to sample)")
 
-v1_preds_quants$virus <- "Original variant"
-v2_preds_quants$virus <- "New variant, different kinetics"
+p_incidence1 <- plot_virosolver_comparisons(chains_same, true_vals_same, real_scales,real_v1_gr_same,real_v2_gr_same)
+p_incidence2 <- plot_virosolver_comparisons(chains_late, true_vals_late, real_scales,real_v1_gr_late,real_v2_gr_late)
+p_incidence3 <- plot_virosolver_comparisons(chains_fixed, true_vals_same, real_scales,real_v1_gr_same,real_v2_gr_same)
 
-v_preds_comb <- bind_rows(v1_preds_quants,v2_preds_quants)
-p_comb_preds <- ggplot(v_preds_comb) + 
-  geom_ribbon(aes(x=t,ymin=lower95,ymax=upper95,fill=virus),alpha=0.1) +
-  geom_ribbon(aes(x=t,ymin=lower50,ymax=upper50,fill=virus,col=virus),alpha=0.5,size=0.2,linetype="dashed") +
-  geom_line(aes(x=t,y=median,col=virus)) +
-  variant_color_scale + variant_fill_scale +
-  #geom_line(data=real_v2_gr,aes(x=t,y=prob_infection),linetype="dashed",col="black",size=0.75) +
-  theme_overall+
-  theme_nice_axes +
-  theme(legend.position="none") +
-  scale_x_continuous(breaks=seq(0,35,by=5),labels=rev(0-seq(0,35,by=5))) +
-  ylab("Relative probability of infection") +
-  xlab("Days (relative to sample date)")
+p_compare_kinetics1 <- p_compare_estimated_curves(chains_same,ages=0:lastday,N=100,nsamp=1000,true_pars1=vl_pars1,true_pars2=vl_pars2)
+p_compare_kinetics2 <- p_compare_estimated_curves(chains_late,ages=0:lastday,N=100,nsamp=1000)
+p_compare_kinetics3 <- p_compare_estimated_curves(chains_late,ages=0:lastday,N=100,nsamp=1000)
 
-p_compare_kinetics <- p_compare_estimated_curves(chain,ages=0:35,N=100,nsamp=1000)
+p_LHS <- (p_ct_samp_same+labs(tag="A")) / (p_incidence1+labs(tag="C")) / (p_compare_kinetics1+labs(tag="E") + theme(legend.position="none"))
+p_RHS <- (p_ct_samp_late+labs(tag="B")) / (p_incidence2+labs(tag="D")) / (p_compare_kinetics2+labs(tag="F")+ theme(legend.position="none"))
 
 
-p_main2 <- (p_ct_samp+labs(tag="D"))/
-              (p_compare_kinetics+labs(tag="E"))/
-              (p_comb_preds+labs(tag="F"))
-
-#p_main <- p1+p2+p_v1_preds+p_v2_preds + plot_layout(ncol=2,byrow=TRUE)
-#p_main
-#ggsave("figures/estimate_diffs.png",p_main,height=6,width=8,units="in",dpi=300)
+p_main <- p_LHS | p_RHS
+ggsave("figures/estimate_diffs.png",p_main,height=6,width=8,units="in",dpi=300)

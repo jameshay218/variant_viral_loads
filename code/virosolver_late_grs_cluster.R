@@ -125,9 +125,7 @@ ages <- 1:lastday
 model_pars <- read.csv("pars/partab_seir_model.csv")
 vl_pars <- model_pars$values
 names(vl_pars) <- model_pars$names
-vl_pars["tshift"] <- 1
-vl_pars["true_0"] <- 45
-vl_pars["desired_mode"] <- 4
+
 ## Have version with lower peak Ct
 vl_pars_peak <- vl_pars
 vl_pars_peak["viral_peak"] <- vl_pars_peak["viral_peak"] - 5
