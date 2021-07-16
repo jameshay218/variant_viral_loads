@@ -51,9 +51,6 @@ vl_pars_both <- vl_pars
 vl_pars_both["t_switch"] <- vl_pars_both["t_switch"] + 5
 vl_pars_both["viral_peak"] <- vl_pars_both["viral_peak"] - 5
 
-confirm_delay_par1 <- 5
-confirm_delay_par2 <- 1
-
 ## MCMC chains for individual-level kinetics
 parTab <- read.csv("~/Documents/GitHub/covid19-group-tests/code/viral_kinetics/pars/partab_multivariate_hinge.csv",stringsAsFactors=FALSE)
 chains <- load_mcmc_chains(paste0("~/Documents/GitHub/covid19-group-tests/code/viral_kinetics/chains/chains_swab"), parTab, 
@@ -188,8 +185,8 @@ ggsave(fig1_alt,filename = "figures/fig1_alt.png",height=7,width=5,dpi=300,units
 ## POWER CALCULATION FOR RANDOM CROSS-SECTIONS
 ###############################################
 samp_time <- 270
-samp_sizes <- c(25,50,100,200,500)
-N_trials <- 500
+samp_sizes <- c(25,50,100,250,500)
+N_trials <- 1000
 
 power_pop_all <- p_sim_ct_compare_power(vl_pars,vl_pars_both,virus1_inc,virus2_inc, ages,samp_time=samp_time,trials=N_trials,samp_sizes=samp_sizes)
 
@@ -220,51 +217,88 @@ ggsave(filename="figures/figS3_indiv_down.png",power_indiv_gr_down[[3]],height=7
 ###############################################
 ## Symptomatic reporting population dataset
 ###############################################
-ct_dist_symptomatic <- simulate_popn_cts_symptomatic(virus1_inc, virus2_inc, 
+confirm_delay_par1_v1 <- 5
+confirm_delay_par2_v1 <- 1
+
+confirm_delay_par1_v2 <- 5
+confirm_delay_par2_v2 <- 1
+
+## Simulate lots of symptomatic reported Ct values for the entire incidence curve
+ct_dist_symptomatic_all <- simulate_popn_cts_symptomatic(virus1_inc, virus2_inc, 
                                                      vl_pars, vl_pars_both,
                                                      10000000, times,
-                                                     confirm_delay_par1, confirm_delay_par2)
-ct_dist_symptomatic$p_mean_sympt
-ct_dist_symptomatic_dat <- ct_dist_symptomatic$ct_dat_sympt
+                                                     confirm_delay_par1_v1=confirm_delay_par1_v1, confirm_delay_par2_v1=confirm_delay_par2_v1,
+                                                     confirm_delay_par1_v2=confirm_delay_par1_v2, confirm_delay_par2_v2 = confirm_delay_par2_v2)
+
+ct_dist_symptomatic_all$p_mean_sympt
+
+## Find days since onset in simulated data
+ct_dist_symptomatic_dat <- ct_dist_symptomatic_all$ct_dat_sympt
 ct_dist_symptomatic_dat <- ct_dist_symptomatic_dat %>% mutate(days_since_onset = sampled_time - onset_time)
-ct_dist_symptomatic_dat <- ct_dist_symptomatic_dat%>% dplyr::select(-ct) %>% rename(ct=ct_obs)
+ct_dist_symptomatic_dat <- ct_dist_symptomatic_dat %>% dplyr::select(-ct) %>% rename(ct=ct_obs)
+
+## Plot Ct values over time since infection
 p_sympt_ct_kinetics_pop <- plot_simulated_ct_curve_symptomatic(ct_values=ct_dist_symptomatic_dat)
 p_sympt_ct_kinetics_pop <- p_sympt_ct_kinetics_pop + labs(tag="A") + variant_color_scale_fig2 + variant_fill_scale_fig2
+
 p_symptom_compare <- plot_smooth_mean_cts_symp(ct_values=ct_dist_symptomatic_dat) + 
-  geom_vline(xintercept=270,linetype="dotted",size=1,col="grey40")+
-  labs(tag="C")
-
-
-for_plot <- ct_dist_symptomatic_dat %>% filter(sampled_time == 270) %>% group_by(virus) %>% 
-  filter(virus != "New variant, same kinetics")
-for_plot[as.character(for_plot$virus) == "New variant, different kinetics","virus"] <- "New variant"
-
-p_onset_dist <- for_plot %>%
-  ggplot() + 
-  stat_density(aes(x=days_since_onset,fill=virus,group=virus),position="identity",adjust=2.5,alpha=0.25,col="black") +
-  geom_vline(data=for_plot %>% group_by(virus) %>% summarize(mean_delay=mean(days_since_onset)),aes(xintercept=mean_delay,col=virus),linetype="dashed") +
-  variant_fill_scale_min + variant_color_scale_min +
-  ylab("Density") +
-  xlab("Days since onset") +
-  theme_overall + theme_nice_axes +
-  theme(legend.position=c(0.8,0.8)) +
+  geom_vline(xintercept=samp_time,linetype="dotted",size=1,col="grey40")+
   labs(tag="B")
 
-power_pop_sympt <- p_sim_ct_compare_power_symp(ct_dist_symptomatic_dat %>% filter(ct < 40), 
-                                   samp_time=270,trials=500,samp_size=samp_sizes,
-                                   true_peak_diff=vl_pars_both["viral_peak"]-vl_pars["viral_peak"])
-#####
-#####
-p_compare_symp_pop <- p_sim_ct_compare_naive_symp(ct_dist_symptomatic_dat %>% filter(ct < 40), 
-                            samp_time=270,N=100,dotsize=0.75) + labs(tag="D")
+## Plot Ct values over entire epidemic
+for_plot <- ct_dist_symptomatic_dat %>% filter(sampled_time == samp_time) %>% group_by(virus) %>% 
+  filter(virus != "New variant, same kinetics")
+for_plot[as.character(for_plot$virus) == "New variant, different kinetics","virus"] <- "New variant"
+for_plot <- for_plot %>% mutate(days_since_infection = sampled_time - infection_time, days_since_infection1 = incu_period+days_since_onset)
+p_onset_dist <- for_plot %>%
+  ggplot() + 
+  stat_density(aes(x=days_since_infection,fill=virus,group=virus),position="identity",adjust=2,alpha=0.25,col="black") +
+  geom_vline(data=for_plot %>% group_by(virus) %>% summarize(mean_delay=mean(days_since_infection)),aes(xintercept=mean_delay,col=virus),linetype="dashed") +
+  variant_fill_scale_min + variant_color_scale_min +
+  coord_cartesian(xlim=c(0,25)) +
+  scale_x_continuous(breaks=seq(0,30,by=5)) +
+  ylab("Density") +
+  xlab("Time since infection\n(incubation period + sampling delay)") +
+  theme_overall + theme_nice_axes +
+  theme(legend.position=c(0.8,0.8)) +
+  labs(tag="C")
 
-fig3 <- (p_sympt_ct_kinetics_pop | p_onset_dist)/(p_symptom_compare | p_compare_symp_pop)
+## Power calculation for comparing Ct values  obtained at the same time
+#power_pop_sympt <- p_sim_ct_compare_power_symp(ct_dist_symptomatic_dat %>% filter(ct < 40), 
+#                                   samp_time=samp_time,trials=500,samp_size=samp_sizes,
+#                                   true_peak_diff=vl_pars_both["viral_peak"]-vl_pars["viral_peak"],
+#                                   samp_window=7)
+
+## Single trial of drawing Ct values and comparing them
+p_compare_symp_pop <- p_sim_ct_compare_naive_symp(ct_dist_symptomatic_dat %>% filter(ct < 40), 
+                            samp_time=samp_time,N=100,dotsize=0.75,samp_window=7) + 
+  labs(tag="D")
+
+## Create figure 3
+fig3 <- (p_sympt_ct_kinetics_pop | p_symptom_compare )/(p_onset_dist | p_compare_symp_pop)
 
 ggsave(filename="figures/fig3.png",fig3,height=6,width=8,units="in",dpi=300)
 ggsave(filename="figures/fig3.pdf",fig3,height=6,width=8)
-ggsave(filename="figures/figS4.png",power_pop_sympt[[3]],height=7,width=5.5,units="in",dpi=300)
 
-power_pop_sympt_lm <- p_sim_ct_compare_power_symp_regression(ct_dist_symptomatic_dat %>% filter(ct < 40), 
-                            samp_time=270,trials=500,samp_size=samp_sizes,
-                            true_peak_diff=vl_pars_both["viral_peak"]-vl_pars["viral_peak"])
-ggsave(filename="figures/figS5.png",power_pop_sympt_lm[[3]],height=7,width=5.5,units="in",dpi=300)
+
+## Similar simulation, but using a re-weighted incidence curve around the sample time to ensure that we have plenty of Ct values
+## to resample from. Using the above version of the simulation generates too few Ct values to be reliable.
+ct_dist_symptomatic_window <- simulate_popn_cts_symptomatic(virus1_inc[(samp_time-30):(samp_time+10)]/sum(virus1_inc[(samp_time-30):(samp_time+10)]), 
+                                                     virus2_inc[(samp_time-30):(samp_time+10)]/sum(virus2_inc[(samp_time-30):(samp_time+10)]), 
+                                                     vl_pars, vl_pars_both,
+                                                     1000000, times[(samp_time-30):(samp_time+10)],
+                                                     confirm_delay_par1_v1=confirm_delay_par1_v1, confirm_delay_par2_v1=confirm_delay_par2_v1,
+                                                     confirm_delay_par1_v2=confirm_delay_par1_v2, confirm_delay_par2_v2 = confirm_delay_par2_v2)
+ct_dist_symptomatic_window_dat <- ct_dist_symptomatic_window$ct_dat_sympt
+ct_dist_symptomatic_window_dat <- ct_dist_symptomatic_window_dat %>% mutate(days_since_onset = sampled_time - onset_time)
+ct_dist_symptomatic_window_dat <- ct_dist_symptomatic_window_dat%>% dplyr::select(-ct) %>% rename(ct=ct_obs)
+
+## Power calculation comparing the use of a linear regression model and Wilcoxon rank sum test
+power_pop_sympt_lm <- p_sim_ct_compare_power_symp_regression(ct_dist_symptomatic_window_dat %>% filter(ct < 40), 
+                            samp_time=samp_time,trials=N_trials,samp_size=samp_sizes,
+                            true_peak_diff=vl_pars_both["viral_peak"]-vl_pars["viral_peak"],samp_window=7)
+
+ggsave(filename="figures/figS4.png",power_pop_sympt_lm[[6]],height=7,width=5.5,units="in",dpi=300)
+ggsave(filename="figures/figS5.png",power_pop_sympt_lm[[5]],height=7,width=5.5,units="in",dpi=300)
+ggsave(filename="figures/figS4.pdf",power_pop_sympt_lm[[6]],height=7,width=5.5)
+ggsave(filename="figures/figS5.pdf",power_pop_sympt_lm[[5]],height=7,width=5.5)

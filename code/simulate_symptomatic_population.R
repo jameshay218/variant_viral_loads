@@ -1,17 +1,22 @@
 simulate_popn_cts_symptomatic <- function(virus1_inc, virus2_inc, 
                                           vl_pars1, vl_pars2,
                                           population_n, times,
-                                          confirm_delay_par1, confirm_delay_par2){
+                                          confirm_delay_par1_v1, confirm_delay_par2_v1,
+                                          confirm_delay_par1_v2, confirm_delay_par2_v2,
+                                          incu_period_par1_v1=1.621, incu_period_par2_v1=0.418,
+                                          incu_period_par1_v2=1.621, incu_period_par2_v2=0.418){
   
   ###############################################
   ## STOCHASTIC SIMULATION OF CT VALUES
   ###############################################
   ## Simulate complete line list for individuals infection with the original or new variant
   v1_linelist <- virosolver::simulate_observations_wrapper(floor(virus1_inc*population_n),times=times,population_n=population_n,
-                                                           conf_delay_par1 = confirm_delay_par1, conf_delay_par2 = confirm_delay_par2) %>% 
+                                                           incu_period_par1=incu_period_par1_v1, incu_period_par2=incu_period_par2_v1,
+                                                           conf_delay_par1 = confirm_delay_par1_v1, conf_delay_par2 = confirm_delay_par2_v1) %>% 
     mutate(virus="Original variant") %>% filter(!is.na(infection_time)) %>% mutate(i=1:n())
   v2_linelist <- virosolver::simulate_observations_wrapper(floor(virus2_inc*population_n),times=times,population_n=population_n,
-                                                           conf_delay_par1 = confirm_delay_par1, conf_delay_par2 = confirm_delay_par2) %>% 
+                                                           incu_period_par1=incu_period_par1_v2, incu_period_par2=incu_period_par2_v2,
+                                                           conf_delay_par1 = confirm_delay_par1_v2, conf_delay_par2 = confirm_delay_par2_v2) %>% 
     mutate(virus="New variant") %>% filter(!is.na(infection_time))%>% mutate(i=1:n())
   v2_linelist$i <- v2_linelist$i + max(v1_linelist$i)
   
@@ -34,9 +39,9 @@ simulate_popn_cts_symptomatic <- function(virus1_inc, virus2_inc,
     summarize(mean_ct=mean(ct_obs),median_ct=median(ct_obs),
               mode_ct=calc_mode(ct_obs),skew_ct=moments::skewness(ct_obs),
               N=n())
- 
+  
   p_mean_sympt <- ggplot() + 
-    geom_smooth(data=cts_pop_sympt_comb %>% filter(ct_obs < 40) %>% ungroup() %>% sample_n(100000),aes(x=sampled_time,y=ct_obs,col=virus,fill=virus),alpha=0.1) +
+    geom_smooth(data=cts_pop_sympt_comb %>% filter(ct_obs < 40) %>% ungroup() %>% sample_n(min(n(),100000)),aes(x=sampled_time,y=ct_obs,col=virus,fill=virus),alpha=0.1) +
     variant_color_scale + variant_fill_scale +
     scale_y_continuous(trans="reverse") +
     scale_x_continuous(limits=c(0,max(times)),breaks=seq(0,550,by=50)) +

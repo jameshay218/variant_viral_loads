@@ -51,7 +51,7 @@ calculate_infection_age_distribution <- function(incidence, detectable_props, ag
     scale_x_continuous(expand=c(0,0)) +
     scale_y_continuous(expand=c(0,0),limits=c(0,max(ages))) +
     ylab("Days since infection") +
-    xlab("Time of epidemice") +
+    xlab("Time of epidemic") +
     theme_overall
   
   p_ages_relative <- ggplot(age_res) + 
@@ -61,13 +61,13 @@ calculate_infection_age_distribution <- function(incidence, detectable_props, ag
     scale_x_continuous(expand=c(0,0)) +
     scale_y_continuous(expand=c(0,0),limits=c(0,max(ages))) +
     ylab("Days since infection") +
-    xlab("Time of epidemice") +
+    xlab("Time of epidemic") +
     theme_overall
   
   p_prev <- ggplot(age_res %>% group_by(t) %>% mutate(prev=sum(proportion,na.rm=TRUE))) + 
     geom_line(aes(x=t,y=prev)) + 
     ylab("Prevalence") +
-    xlab("Time of epidemice") +
+    xlab("Time of epidemic") +
     theme_overall
   
   return(list(age_distributions=age_res,p_ages=p_ages,p_ages_relative=p_ages_relative,p_prev=p_prev, age_mean=age_res_mean))  
@@ -94,21 +94,29 @@ calculate_ct_distribution <- function(vl_pars, ages, incidence, obs_times){
   return(ct_summary)
 }
 
-simulate_cross_section <- function(pars, ages, incidence, obs_time,N=1000){
+simulate_cross_section <- function(pars, ages, incidence, obs_time,N=1000, use_pos=TRUE){
     ## Use virosolver to get the expected Ct distribution
     ct_distribution <- pred_dist_wrapper(seq(0,40,by=0.01),obs_times = obs_time,ages,pars,incidence)
     ## Re-scale 
-    ct_scaled_dist <- ct_distribution %>% filter(ct < 40) %>% group_by(t) %>% mutate(density_scaled=density/sum(density)) %>%  mutate(cumu_density=cumsum(density_scaled)) 
+    if(use_pos){
+      ct_distribution <- ct_distribution %>% filter(ct < 40)
+    }
+    
+    ct_scaled_dist <- ct_distribution %>% group_by(t) %>% mutate(density_scaled=density/sum(density)) %>%  mutate(cumu_density=cumsum(density_scaled)) 
     cts <- sample(ct_scaled_dist$ct,size=N,replace=TRUE,prob=ct_scaled_dist$density_scaled)
     return(cts)
 }
 
 
-simulate_m_cross_sections <- function(pars, ages, incidence, obs_time,N=1000, m=10){
+simulate_m_cross_sections <- function(pars, ages, incidence, obs_time,N=1000, m=10, use_pos=TRUE){
   ## Use virosolver to get the expected Ct distribution
   ct_distribution <- pred_dist_wrapper(seq(0,40,by=0.01),obs_times = obs_time,ages,pars,incidence)
   ## Re-scale 
-  ct_scaled_dist <- ct_distribution %>% filter(ct < 40) %>% group_by(t) %>% mutate(density_scaled=density/sum(density)) %>%  mutate(cumu_density=cumsum(density_scaled)) 
+  if(use_pos){
+    ct_distribution <- ct_distribution %>% filter(ct < 40)
+  }
+  
+  ct_scaled_dist <- ct_distribution %>% group_by(t) %>% mutate(density_scaled=density/sum(density)) %>%  mutate(cumu_density=cumsum(density_scaled)) 
   
   ## Sample from distribution m times and combine
   cts <- list()
@@ -204,7 +212,7 @@ simulate_individual_level_data_symptomatic <- function(N, incidence, times, chai
   return(obs_vl_melted)
 }
 
-resample_ct_dist <- function(obs, samp_size=100, N=1,with_replacement=FALSE,bootstrap_cts=TRUE,cts=seq(0,40,by=0.1),bde_bandwidth=0.02){
+resample_ct_dist <- function(obs, samp_size=100, N=1,with_replacement=FALSE,bootstrap_cts=TRUE,cts=seq(0,40,by=0.1),bde_bandwidth=0.03){
   n_samp <- samp_size
   if(with_replacement==FALSE){
     n_samp <- min(length(obs), samp_size)
@@ -225,7 +233,7 @@ resample_ct_dist <- function(obs, samp_size=100, N=1,with_replacement=FALSE,boot
     #dens3 <- density(dens_estimate3,cts)
     #dens4 <- density(dens_estimate4,cts)
     
-    plot(cts,dens1,type='l')
+    #plot(cts,dens1,type='l')
     #lines(cts, dens2,col="red")
     #lines(cts, dens3,col="blue")
     #lines(cts, dens4,col="green")

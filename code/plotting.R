@@ -44,6 +44,10 @@ comparison_color_scale <- scale_color_manual(name="Comparison",drop=TRUE,
                                              values=c("V2-V1,\nsame kinetics"="#009E73",
                                                       "V2-V1,\ndifferent kinetics"="#D55E00",
                                                       "V2-V2,\ndifferent kinetics"="black"))
+comparison_fill_scale <- scale_fill_manual(name="Comparison",drop=TRUE,
+                                             values=c("V2-V1,\nsame kinetics"="#009E73",
+                                                      "V2-V1,\ndifferent kinetics"="#D55E00",
+                                                      "V2-V2,\ndifferent kinetics"="black"))
 comparison_linetype_scale <- scale_linetype_manual(name="Comparison",drop=TRUE,
                                              values=c("V2-V1,\nsame kinetics"="solid",
                                                       "V2-V1,\ndifferent kinetics"="dashed",
@@ -246,12 +250,12 @@ p_sim_ct_compare_naive <- function(vl_pars1,vl_pars2,virus1_inc,virus2_inc, ages
   p_ct_samp
 }
 
-p_sim_ct_compare_naive_symp <- function(ct_values,samp_time,N=100,dotsize=1){
-  cts_1 <- ct_values %>% filter(virus=="Original variant",sampled_time==samp_time) %>% sample_n(min(N, n()))
+p_sim_ct_compare_naive_symp <- function(ct_values,samp_time,N=100,dotsize=1,samp_window=7){
+  cts_1 <- ct_values %>% filter(virus=="Original variant",sampled_time>= samp_time - (samp_window/2), sampled_time <= samp_time + (samp_window/2)) %>% sample_n(min(N, n()))
   print(nrow(cts_1))
-  cts_2 <- ct_values %>% filter(virus=="New variant, same kinetics",sampled_time==samp_time) %>% sample_n(min(N, n()))
+  cts_2 <- ct_values %>% filter(virus=="New variant, same kinetics",sampled_time>= samp_time - (samp_window/2), sampled_time <= samp_time + (samp_window/2)) %>% sample_n(min(N, n()))
   print(nrow(cts_2))
-  cts_2_alt <- ct_values %>% filter(virus=="New variant, different kinetics",sampled_time==samp_time) %>% sample_n(min(N, n()))
+  cts_2_alt <- ct_values %>% filter(virus=="New variant, different kinetics",sampled_time>= samp_time - (samp_window/2), sampled_time <= samp_time + (samp_window/2)) %>% sample_n(min(N, n()))
   print(nrow(cts_2_alt))
                                                                                               
   cts_sim_comb <- bind_rows(cts_1,cts_2,cts_2_alt) %>% mutate(virus=factor(virus,levels=variant_levels))
@@ -296,8 +300,6 @@ p_sim_ct_compare_growth <- function(vl_pars1,vl_pars2,virus1_inc,virus2_inc, age
   cts_2 <- tibble(ct=simulate_cross_section(vl_pars1, ages, virus2_inc,obs_time=samp_time2,N=N),virus="New variant, same kinetics")
   cts_2_alt <- tibble(ct=simulate_cross_section(vl_pars2, ages, virus2_inc,obs_time=samp_time2_alt,N=N),virus="New variant, different kinetics")
   cts_sim_comb <- bind_rows(cts_1,cts_2,cts_2_alt) %>% mutate(virus=factor(virus,levels=variant_levels))
-
-  
   
   pval1 <- as.numeric(wilcox.test(cts_1$ct,cts_2$ct,alternative="two.sided")["p.value"])
   pval3 <- as.numeric(wilcox.test(cts_1$ct,cts_2_alt$ct,alternative="two.sided")["p.value"])
@@ -323,6 +325,60 @@ p_sim_ct_compare_growth <- function(vl_pars1,vl_pars2,virus1_inc,virus2_inc, age
                                 "New variant, different kinetics"="New variant,\ndifferent kinetics")) +
     ggtitle(paste0("Wilcoxon Rank Sum test on samples from growth rate=", growth_rate_samp))
   p_ct_samp
+}
+
+internal_plot_power_compare_power_symp <- function(all_results, all_results_summary, true_peak_diff, samp_sizes,ver="wilcoxon"){
+  p_differences <- ggplot(all_results %>% mutate(samp_size_label=factor(samp_size_label,levels=paste0("N=",samp_sizes)))) + 
+    #geom_jitter(aes(x=comparison,y=difference,col=comparison),height=0,width=0.25,size=0.25,alpha=0.5) + 
+    geom_boxplot(aes(x=comparison,y=difference,col=comparison,fill=comparison),size=0.25,alpha=0.25) +
+    geom_hline(yintercept=0,linetype="dashed",col="#009E73") + 
+    geom_hline(yintercept=true_peak_diff,linetype="dashed",col="#D55E00") + 
+    comparison_color_scale + comparison_fill_scale + 
+    facet_wrap(~samp_size_label,nrow=1)+
+    ylab("Median Ct difference") +
+    xlab("") +
+    theme_overall + 
+    theme_nice_axes +
+    theme(axis.text.x=element_text(angle=45,hjust=1),legend.position="none") +
+    labs(tag="A")
+  
+  if(ver == "regression"){
+    p_differences <- p_differences + ylab("Coefficient for virus variable")
+  }
+  
+  p_t1_error <- ggplot(all_results_summary %>% 
+                         filter(comparison %in% c("V2-V1,\ndifferent kinetics"))%>%
+                         mutate(samp_size=factor(samp_size,levels=samp_sizes))) + 
+    geom_hline(yintercept=0.95,linetype="dashed",alpha=0.5) +
+    geom_line(aes(x=as.numeric(samp_size),y=prop_different,col=comparison)) + 
+    #comparison_color_scale + comparison_linetype_scale +
+    scale_color_manual(name="Comparison",values=c("V2-V1,\ndifferent kinetics"="#D55E00")) +
+    ylab("Power") +
+    xlab("") +
+    theme_overall + 
+    theme_nice_axes +
+    scale_y_continuous(limits=c(0,1)) +
+    theme(legend.position=c(0.8,0.4)) +
+    scale_x_continuous(labels=samp_sizes,breaks=seq_along(samp_sizes)) +
+    labs(tag="B")
+  
+  p_t2_error <- ggplot(all_results_summary %>% filter(comparison %in% c("V2-V1,\nsame kinetics"))%>%
+                         mutate(samp_size=factor(samp_size,levels=samp_sizes))) + 
+    geom_hline(yintercept=0.05,linetype="dashed",alpha=0.5) +
+    geom_line(aes(x=as.numeric(samp_size),y=prop_different,col=comparison)) + 
+    comparison_color_scale +
+    scale_color_manual(name="Comparison",values=c("V2-V1,\nsame kinetics"="#009E73")) +
+    scale_y_continuous(limits=c(0,1)) + 
+    ylab("Type 1 error") +
+    xlab("Sample size") +
+    theme_overall + 
+    theme_nice_axes +
+    theme(legend.position=c(0.4,0.8)) +
+    scale_x_continuous(labels=samp_sizes,breaks=seq_along(samp_sizes)) +
+    labs(tag="C")
+  
+  p_main <- p_differences/p_t1_error/p_t2_error 
+  p_main
 }
 
 
@@ -386,49 +442,7 @@ p_sim_ct_compare_power <- function(vl_pars1,vl_pars2,virus1_inc,virus2_inc,
   all_results$comparison <- factor(all_results$comparison, levels=c("V2-V1,\nsame kinetics","V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))
   all_results_summary$comparison <- factor(all_results_summary$comparison, levels=c("V2-V1,\nsame kinetics","V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))
   
-  p_differences <- ggplot(all_results %>% mutate(samp_size_label=factor(samp_size_label,levels=paste0("N=",samp_sizes)))) + 
-    geom_jitter(aes(x=comparison,y=difference,col=comparison),height=0,width=0.25,size=0.25,alpha=0.5) + 
-    geom_hline(yintercept=0,linetype="dashed",col="#009E73") + 
-    geom_hline(yintercept=true_peak_diff,linetype="dashed",col="#D55E00") + 
-    comparison_color_scale +
-    facet_wrap(~samp_size_label,nrow=1)+
-    ylab("Median Ct difference") +
-    xlab("") +
-    theme_overall + 
-    theme_nice_axes +
-    theme(axis.text.x=element_text(angle=45,hjust=1),legend.position="none") +
-    labs(tag="A")
-  
-  p_t1_error <- ggplot(all_results_summary %>% 
-                         filter(comparison %in% c("V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))%>%
-                         mutate(samp_size=factor(samp_size,levels=samp_sizes))) + 
-    geom_line(aes(x=as.numeric(samp_size),y=prop_different,col=comparison)) + 
-    scale_color_manual(name="Comparison",drop=TRUE,
-                       values=c("V2-V1,\ndifferent kinetics"="#D55E00",
-                                "V2-V2,\ndifferent kinetics"="black")) +
-    scale_y_continuous(limits=c(0,1)) + 
-    ylab("Power") +
-    xlab("") +
-    theme_overall + 
-    theme_nice_axes +
-    theme(legend.position=c(0.8,0.4)) +
-    scale_x_continuous(labels=samp_sizes) +
-    labs(tag="B")
-  p_t2_error <- ggplot(all_results_summary %>% filter(comparison %in% c("V2-V1,\nsame kinetics"))%>%
-                         mutate(samp_size=factor(samp_size,levels=samp_sizes))) + 
-    geom_line(aes(x=as.numeric(samp_size),y=prop_different,col=comparison)) + 
-    scale_color_manual(name="Comparison",drop=TRUE,
-                       values=c("V2-V1,\nsame kinetics"="#009E73")) +
-    scale_y_continuous(limits=c(0,1)) + 
-    ylab("Type 1 error") +
-    xlab("Sample size") +
-    theme_overall + 
-    theme_nice_axes +
-    theme(legend.position=c(0.8,0.4)) +
-    scale_x_continuous(labels=samp_sizes) +
-    labs(tag="C")
-  
-  p_main <- p_differences/p_t1_error/p_t2_error 
+  p_main <- internal_plot_power_compare_power_symp(all_results, all_results_summary, true_peak_diff, samp_sizes)
   
   list(all_results,all_results_summary,p_main)
 }
@@ -493,60 +507,14 @@ p_sim_ct_indiv_compare_power <- function(cts_indiv_comb,samp_time,trials=100,sam
   all_results$comparison <- factor(all_results$comparison, levels=c("V2-V1,\nsame kinetics","V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))
   all_results_summary$comparison <- factor(all_results_summary$comparison, levels=c("V2-V1,\nsame kinetics","V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))
   
-  p_differences <- ggplot(all_results %>% mutate(samp_size_label=factor(samp_size_label,levels=paste0("N=",samp_sizes)))) + 
-    geom_jitter(aes(x=comparison,y=difference,col=comparison),height=0,width=0.25,size=0.25,alpha=0.5) + 
-    geom_hline(yintercept=0,linetype="dashed",col="#009E73") + 
-    geom_hline(yintercept=true_peak_diff,linetype="dashed",col="#D55E00") + 
-    #comparison_color_scale +
-    scale_color_manual(name="Comparison",drop=TRUE,
-                       values=c(#"V2-V1,\nsame kinetics"="#009E73",
-                                "V2-V1,\ndifferent kinetics"="#D55E00",
-                                "V2-V2,\ndifferent kinetics"="black"))
-    facet_wrap(~samp_size_label,nrow=1)+
-    ylab("Median Ct difference") +
-    xlab("") +
-    theme_overall +
-    theme_nice_axes + 
-    theme(axis.text.x=element_text(angle=45,hjust=1),legend.position="none") +
-    labs(tag="A")
-  p_t1_error <- ggplot(all_results_summary %>% 
-                         filter(comparison %in% c("V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))%>%
-                         mutate(samp_size=factor(samp_size,levels=samp_sizes))) + 
-    geom_line(aes(x=as.numeric(samp_size),y=prop_different,col=comparison)) + 
-    #comparison_color_scale +
-    scale_color_manual(name="Comparison",drop=TRUE,
-                       values=c("V2-V1,\nsame kinetics"="#009E73"#,
-                                #"V2-V1,\ndifferent kinetics"="#D55E00",
-                                #"V2-V2,\ndifferent kinetics"="black"
-                                ))+
-    scale_y_continuous(limits=c(0,1)) + 
-    ylab("Power") +
-    xlab("") +
-    theme_overall +
-    theme_nice_axes + 
-    theme(legend.position=c(0.8,0.4)) +
-    scale_x_continuous(labels=samp_sizes) +
-    labs(tag="B")
-  p_t2_error <- ggplot(all_results_summary %>% filter(comparison %in% c("V2-V1,\nsame kinetics"))%>%
-                         mutate(samp_size=factor(samp_size,levels=samp_sizes))) + 
-    geom_line(aes(x=as.numeric(samp_size),y=prop_different,col=comparison)) + 
-    comparison_color_scale +
-    scale_y_continuous(limits=c(0,1)) + 
-    ylab("Type 1 error") +
-    xlab("Sample size") +
-    theme_overall + 
-    theme_nice_axes +
-    theme(legend.position=c(0.8,0.4)) +
-    scale_x_continuous(labels=samp_sizes) +
-    labs(tag="C")
-  
-  p_main <- p_differences/p_t1_error/p_t2_error 
+  p_main <- internal_plot_power_compare_power_symp(all_results, all_results_summary, true_peak_diff, samp_sizes)
   
   list(all_results,all_results_summary,p_main)
 }
 
 
-p_sim_ct_compare_power_symp <- function(ct_dist_symptomatic_dat, samp_time,trials=100,samp_sizes=100,alpha=0.05,true_peak_diff=0) {
+p_sim_ct_compare_power_symp <- function(ct_dist_symptomatic_dat, samp_time,trials=100,
+                                        samp_sizes=100,alpha=0.05,true_peak_diff=0,samp_window=7) {
   samp_time1 <- samp_time2 <- samp_time2_alt <- samp_time
   
   all_results <- list()
@@ -555,13 +523,16 @@ p_sim_ct_compare_power_symp <- function(ct_dist_symptomatic_dat, samp_time,trial
     print(paste0("Sample size: ", N))
     ## Generate fake Ct distributions for the desired time and virus
     ## Original variant
-    cts_1_tmp <- ct_dist_symptomatic_dat %>% filter(sampled_time == samp_time1, virus=="Original variant") %>% pull(ct)
+    cts_1_tmp <- ct_dist_symptomatic_dat %>% filter(sampled_time >= samp_time1-(samp_window/2),sampled_time <= samp_time1+(samp_window/2), 
+                                                    virus=="Original variant") %>% pull(ct)
     cts_1_all <- resample_ct_dist(cts_1_tmp,samp_size=N,N=trials,with_replacement=TRUE,bootstrap_cts=FALSE,cts=seq(0,40,by=0.1))
     ## New variant, same kinetics
-    cts_2_tmp <- ct_dist_symptomatic_dat %>% filter(sampled_time == samp_time2, virus=="New variant, same kinetics") %>% pull(ct)
+    cts_2_tmp <- ct_dist_symptomatic_dat %>% filter(sampled_time >= samp_time2-(samp_window/2),sampled_time <= samp_time2+(samp_window/2), 
+                                                    virus=="New variant, same kinetics") %>% pull(ct)
     cts_2_all <- resample_ct_dist(cts_2_tmp,samp_size=N,N=trials,with_replacement=TRUE,bootstrap_cts=FALSE,cts=seq(0,40,by=0.1))
     ## Original variant
-    cts_2_alt_tmp <- ct_dist_symptomatic_dat %>% filter(sampled_time == samp_time2_alt, virus=="New variant, different kinetics") %>% pull(ct)
+    cts_2_alt_tmp <- ct_dist_symptomatic_dat %>% filter(sampled_time >= samp_time2_alt-(samp_window/2),sampled_time <= samp_time2_alt+(samp_window/2), 
+                                                        virus=="New variant, different kinetics") %>% pull(ct)
     cts_2_alt_all <- resample_ct_dist(cts_2_alt_tmp,samp_size=N,N=trials,with_replacement=TRUE,bootstrap_cts=FALSE,cts=seq(0,40,by=0.1))
     
     results <- list()
@@ -592,72 +563,57 @@ p_sim_ct_compare_power_symp <- function(ct_dist_symptomatic_dat, samp_time,trial
   all_results$comparison <- factor(all_results$comparison, levels=c("V2-V1,\nsame kinetics","V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))
   all_results_summary$comparison <- factor(all_results_summary$comparison, levels=c("V2-V1,\nsame kinetics","V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))
   
-  
-  p_differences <- ggplot(all_results %>% mutate(samp_size_label=factor(samp_size_label,levels=paste0("N=",samp_sizes)))) + 
-    geom_jitter(aes(x=comparison,y=difference,col=comparison),height=0,width=0.25,size=0.25,alpha=0.5) + 
-    geom_hline(yintercept=0,linetype="dashed",col="#009E73") + 
-    geom_hline(yintercept=true_peak_diff,linetype="dashed",col="#D55E00") + 
-    comparison_color_scale +
-    facet_wrap(~samp_size_label,nrow=1)+
-    ylab("Median Ct difference") +
-    xlab("") +
-    theme_overall + 
-    theme_nice_axes +
-    theme(axis.text.x=element_text(angle=45,hjust=1),legend.position="none") +
-    labs(tag="A")
-  p_t1_error <- ggplot(all_results_summary %>% 
-                         filter(comparison %in% c("V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))%>%
-                         mutate(samp_size=factor(samp_size,levels=samp_sizes))) + 
-    geom_line(aes(x=as.numeric(samp_size),y=prop_different,col=comparison)) + 
-    #comparison_color_scale +
-    scale_color_manual(name="Comparison",drop=TRUE,
-                       values=c(#"V2-V1,\nsame kinetics"="#009E73",
-                                "V2-V1,\ndifferent kinetics"="#D55E00",
-                                "V2-V2,\ndifferent kinetics"="black")) +
-    scale_y_continuous(limits=c(0,1)) + 
-    ylab("Power") +
-    xlab("") +
-    theme_overall + 
-    theme_nice_axes +
-    theme(legend.position=c(0.8,0.4)) +
-    scale_x_continuous(labels=samp_sizes) +
-    labs(tag="B")
-  p_t2_error <- ggplot(all_results_summary %>% filter(comparison %in% c("V2-V1,\nsame kinetics"))%>%
-                         mutate(samp_size=factor(samp_size,levels=samp_sizes))) + 
-    geom_line(aes(x=as.numeric(samp_size),y=prop_different,col=comparison)) + 
-    #comparison_color_scale +
-    scale_color_manual(name="Comparison",drop=TRUE,
-                       values=c("V2-V1,\nsame kinetics"="#009E73")) +
-    scale_y_continuous(limits=c(0,1)) + 
-    ylab("Type 1 error") +
-    xlab("Sample size") +
-    theme_overall + 
-    theme_nice_axes +
-    theme(legend.position=c(0.4,0.8)) +
-    scale_x_continuous(labels=samp_sizes) +
-    labs(tag="C")
-  
-  p_main <- p_differences/p_t1_error/p_t2_error 
+  p_main <- internal_plot_power_compare_power_symp(all_results, all_results_summary, true_peak_diff, samp_sizes)
   
   list(all_results,all_results_summary,p_main)
 }
 
 
 
-p_sim_ct_compare_power_symp_regression <- function(ct_dist_symptomatic_dat, samp_time,trials=100,samp_sizes=100,alpha=0.05,true_peak_diff=0) {
+p_sim_ct_compare_power_symp_regression <- function(ct_dist_symptomatic_dat, samp_time,trials=100,
+                                                   samp_sizes=100,alpha=0.05,true_peak_diff=0,samp_window=7) {
   samp_time1 <- samp_time2 <- samp_time2_alt <- samp_time
   
   all_results <- list()
+  all_results_wilcox <- list()
+  
   for(i in seq_along(samp_sizes)){
     N <- samp_sizes[i]
     print(paste0("Sample size: ", N))
-   
+    
     results <- list()
+    results_wilcox <- list()
+    
     for(j in 1:trials){
-      v1_cts <- ct_dist_symptomatic_dat %>% filter(sampled_time == samp_time1, virus=="Original variant") %>% sample_n(N,replace=TRUE)
-      v2_cts <- ct_dist_symptomatic_dat %>% filter(sampled_time == samp_time2, virus=="New variant, same kinetics") %>% sample_n(N,replace=TRUE)
-      v2_alt_cts <- ct_dist_symptomatic_dat %>% filter(sampled_time == samp_time2_alt, virus=="New variant, different kinetics") %>% sample_n(N,replace=TRUE)
+      ## Resample Ct values from the time range for each variant
+      v1_cts <- ct_dist_symptomatic_dat %>% filter(sampled_time >= samp_time1-(samp_window/2),sampled_time <= samp_time1+(samp_window/2),
+                                                   virus=="Original variant") %>% sample_n(N,replace=TRUE)
+      v2_cts <- ct_dist_symptomatic_dat %>% filter(sampled_time >= samp_time2-(samp_window/2),sampled_time <= samp_time2+(samp_window/2),
+                                                   virus=="New variant, same kinetics") %>% sample_n(N,replace=TRUE)
+      v2_alt_cts <- ct_dist_symptomatic_dat %>% filter(sampled_time >= samp_time2_alt-(samp_window/2),sampled_time <= samp_time2_alt+(samp_window/2),
+                                                       virus=="New variant, different kinetics") %>% sample_n(N,replace=TRUE)
       
+      
+      ## Pull Ct values and find difference in medians, Wilcoxon test
+      v1_cts_wilcox <- v1_cts %>% pull(ct)
+      v2_cts_wilcox <- v2_cts %>% pull(ct)
+      v2_alt_cts_wilcox <- v2_alt_cts %>% pull(ct)
+      
+      diff1v2 <- median(v2_cts_wilcox) - median(v1_cts_wilcox)
+      diff1v2alt <- median(v2_alt_cts_wilcox) - median(v1_cts_wilcox)
+      diff2v2alt <- median(v2_alt_cts_wilcox) - median(v2_cts_wilcox)
+      
+      test1v2 <- as.numeric(wilcox.test(v1_cts_wilcox,v2_cts_wilcox,alternative="two.sided")["p.value"])
+      test1v2alt <- as.numeric(wilcox.test(v1_cts_wilcox,v2_alt_cts_wilcox,alternative="two.sided")["p.value"])
+      test2v2alt <- as.numeric(wilcox.test(v2_alt_cts_wilcox,v2_cts_wilcox,alternative="two.sided")["p.value"])
+      
+      results_wilcox[[j]] <- tibble(comparison=c("V2-V1,\nsame kinetics","V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"),
+                             difference=c(diff1v2,diff1v2alt,diff2v2alt),
+                             pvalue=c(test1v2,test1v2alt,test2v2alt),trial=j) %>% 
+        mutate(signif=as.numeric(pvalue<alpha),samp_size=N,samp_size_label=paste0("N=",N))
+      
+      
+      ## See how much variation "variant" describes in linear regression model
       v_comp_1 <- bind_rows(v1_cts, v2_cts)
       fit1 <- lm(ct ~ days_since_onset + virus,data=v_comp_1)
       
@@ -713,65 +669,39 @@ p_sim_ct_compare_power_symp_regression <- function(ct_dist_symptomatic_dat, samp
                              onset_lower_confint=c(onset_lower_ci1,onset_lower_ci2,onset_lower_ci3),
                              onset_upper_confint=c(onset_upper_ci1,onset_upper_ci2,onset_upper_ci3),
                              
-                             
                              true_diff=c(0, true_peak_diff, true_peak_diff),
                              correct=c(lower_ci1 < 0 & upper_ci1 > 0, upper_ci2 < 0, upper_ci3 < 0),
                              trial=j) %>% 
         mutate(signif=as.numeric(pvalue<alpha),samp_size=N,samp_size_label=paste0("N=",N))
     }
     results <- do.call("bind_rows",results)
+    results_wilcox <- do.call("bind_rows",results_wilcox)
     all_results[[N]] <- results
+    all_results_wilcox[[N]] <- results_wilcox
   }
+  
+  ## Linear regression model results
   all_results <- do.call("bind_rows",all_results)
-  all_results_summary <- all_results %>% group_by(comparison,samp_size) %>% summarize(prop_correct=sum(correct)/n())
+  all_results_summary <- all_results %>% group_by(comparison,samp_size) %>% summarize(prop_correct=sum(correct)/n()) %>%
+    mutate(prop_different=ifelse(comparison == "V2-V1,\nsame kinetics",1-prop_correct,prop_correct))
   
-  all_results$comparison <- factor(all_results$comparison, levels=c("V2-V1,\nsame kinetics","V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))
-  all_results_summary$comparison <- factor(all_results_summary$comparison, levels=c("V2-V1,\nsame kinetics","V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))
+  all_results$comparison <- factor(all_results$comparison, 
+                                   levels=c("V2-V1,\nsame kinetics","V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))
+  all_results_summary$comparison <- factor(all_results_summary$comparison, 
+                                           levels=c("V2-V1,\nsame kinetics","V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))
   
+  ## Wilcoxon test results
+  all_results_wilcox <- do.call("bind_rows",all_results_wilcox)
+  all_results_summary_wilcox <- all_results_wilcox %>% group_by(comparison,samp_size) %>% summarize(prop_different=sum(signif)/n())
   
-  p_differences <- ggplot(all_results %>% mutate(samp_size_label=factor(samp_size_label,levels=paste0("N=",samp_sizes)))) + 
-    geom_jitter(aes(x=comparison,y=difference,col=comparison),height=0,width=0.25,size=0.25,alpha=0.5) + 
-    geom_hline(yintercept=0,linetype="dashed",col="#009E73") + 
-    geom_hline(yintercept=true_peak_diff,linetype="dashed",col="#D55E00") + 
-    comparison_color_scale +
-    facet_wrap(~samp_size_label,nrow=1)+
-    ylab("Effect of virus on Ct value") +
-    xlab("") +
-    theme_overall + 
-    theme_nice_axes +
-    theme(axis.text.x=element_text(angle=45,hjust=1),legend.position="none") +
-    labs(tag="A")
+  all_results_wilcox$comparison <- factor(all_results_wilcox$comparison, levels=c("V2-V1,\nsame kinetics","V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))
+  all_results_summary_wilcox$comparison <- factor(all_results_summary_wilcox$comparison, levels=c("V2-V1,\nsame kinetics","V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))
   
-  p_t1_error <- ggplot(all_results_summary %>% 
-                         filter(comparison %in% c("V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))%>%
-                         mutate(samp_size=factor(samp_size,levels=samp_sizes))) + 
-    geom_line(aes(x=as.numeric(samp_size),y=prop_correct,col=comparison)) + 
-    comparison_color_scale + comparison_linetype_scale +
-    ylab("Power") +
-    xlab("") +
-    theme_overall + 
-    theme_nice_axes +
-    scale_y_continuous(limits=c(0,1)) +
-    theme(legend.position=c(0.8,0.4)) +
-    scale_x_continuous(labels=samp_sizes) +
-    labs(tag="B")
-  
-  p_t2_error <- ggplot(all_results_summary %>% filter(comparison %in% c("V2-V1,\nsame kinetics"))%>%
-                         mutate(samp_size=factor(samp_size,levels=samp_sizes))) + 
-    geom_line(aes(x=as.numeric(samp_size),y=1-prop_correct,col=comparison)) + 
-    comparison_color_scale +
-    scale_y_continuous(limits=c(0,1)) + 
-    ylab("Type 1 error") +
-    xlab("Sample size") +
-    theme_overall + 
-    theme_nice_axes +
-    theme(legend.position=c(0.4,0.8)) +
-    scale_x_continuous(labels=samp_sizes) +
-    labs(tag="C")
-  
-  p_main <- p_differences/p_t1_error/p_t2_error 
-  
-  list(all_results,all_results_summary,p_main)
+  p_main_lm <- internal_plot_power_compare_power_symp(all_results, all_results_summary,true_peak_diff, samp_sizes,ver="regression")
+  p_main_wilcox <- internal_plot_power_compare_power_symp(all_results_wilcox, all_results_summary_wilcox,true_peak_diff, samp_sizes)
+  list(all_results,all_results_summary,
+       all_results_wilcox, all_results_summary_wilcox,
+       p_main_lm, p_main_wilcox)
 }
 
 p_compare_estimated_curves <- function(chain,ages=1:35,N=1000, nsamp=100,true_pars1=NULL,true_pars2=NULL){

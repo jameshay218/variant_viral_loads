@@ -55,7 +55,7 @@ ct_diff <- 5
 tswitch_diff <- 5
 
 ## How many Ct values to simulate at each sample time?
-sample_size <- 100
+sample_size <- 1000
 
 ## MCMC settings
 nchains <- 3
@@ -65,6 +65,8 @@ mcmcPars_ct_pt <- list("iterations"=50000,"popt"=0.234,"opt_freq"=1000,
                        "temperature" = seq(1,101,length.out=n_temperatures),
                        "parallel_tempering_iter" = 5,"max_adaptive_period" = 50000, 
                        "adaptiveLeeway" = 0.2, "max_total_iterations" = 50000)
+
+use_pos <- FALSE ## If TRUE, only uses detectable Ct values. If FALSE, uses all Ct values.
 
 ###############################################
 ## 1) SEIR SIMULATION
@@ -119,8 +121,13 @@ mean_gr_virus2_same <- mean(log(tmp2_same[2:length(tmp2_same)]/tmp2_same[1:(leng
 true_vals_same <- tibble(gr=c(mean_gr_virus1_same,mean_gr_virus2_same,mean_gr_virus2_same-mean_gr_virus1_same),
                          name=c("Original variant","New variant","Difference")) 
 true_vals_same$name <- factor(true_vals_same$name,levels=c("Original variant","New variant","Difference"))
-real_v1_gr_same <- tibble(t=0:lastday,prob_infection=tmp1_same/sum(tmp1_same))
-real_v2_gr_same <- tibble(t=0:lastday,prob_infection=tmp2_same/sum(tmp2_same))
+real_v1_gr_same <- tibble(t=0:lastday,prob_infection=tmp1_same)
+real_v2_gr_same <- tibble(t=0:lastday,prob_infection=tmp2_same)
+
+if(use_pos){
+  real_v1_gr_same$prob_infection <- real_v1_gr_same$prob_infection/sum(real_v1_gr_same$prob_infection)
+  real_v2_gr_same$prob_infection <- real_v2_gr_same$prob_infection/sum(real_v2_gr_same$prob_infection)
+}
 
 ########################################################
 ## B) SEIR SIMULATION if seeded at a later time
@@ -173,8 +180,8 @@ real_scales <- tibble(name=scale_key,value=c(vl_pars2["viral_peak"]/vl_pars1["vi
 
 ########################################################
 ## A) SIMULATE CT VALUES if seeded at the same time
-cts_1_same <- tibble(ct=simulate_cross_section(vl_pars1, ages, virus1_inc_same,obs_time=samp_time_early,N=sample_size),variant="Original variant")
-cts_2_same <- tibble(ct=simulate_cross_section(vl_pars2, ages, virus2_inc_same,obs_time=samp_time_early,N=sample_size),variant="New variant")
+cts_1_same <- tibble(ct=simulate_cross_section(vl_pars1, ages, virus1_inc_same,obs_time=samp_time_early,N=sample_size,use_pos=use_pos),variant="Original variant")
+cts_2_same <- tibble(ct=simulate_cross_section(vl_pars2, ages, virus2_inc_same,obs_time=samp_time_early,N=sample_size,use_pos=use_pos),variant="New variant")
 cts_sim_comb_same <- bind_rows(cts_1_same,cts_2_same) %>% mutate(t=lastday)
 cts_sim_comb_same$virus <- factor(cts_sim_comb_same$variant,levels=variant_levels)
 
@@ -197,8 +204,8 @@ TMP_dotplot_function <- function(ct_data){
 p_ct_samp_same <- TMP_dotplot_function(cts_sim_comb_same)
 
 ## B) SIMULATE CT VALUES if seeded at a later time
-cts_1_late <- tibble(ct=simulate_cross_section(vl_pars1, ages, virus1_inc_late,obs_time=samp_time_late,N=100),variant="Original variant")
-cts_2_late <- tibble(ct=simulate_cross_section(vl_pars2, ages, virus2_inc_late,obs_time=samp_time_late,N=100),variant="New variant")
+cts_1_late <- tibble(ct=simulate_cross_section(vl_pars1, ages, virus1_inc_late,obs_time=samp_time_late,N=sample_size,use_pos=use_pos),variant="Original variant")
+cts_2_late <- tibble(ct=simulate_cross_section(vl_pars2, ages, virus2_inc_late,obs_time=samp_time_late,N=sample_size,use_pos=use_pos),variant="New variant")
 cts_sim_comb_late <- bind_rows(cts_1_late,cts_2_late) %>% mutate(t=35)
 cts_sim_comb_late$virus <- factor(cts_sim_comb_late$variant,levels=variant_levels)
 
@@ -209,6 +216,10 @@ p_ct_samp_late <- TMP_dotplot_function(cts_sim_comb_late)
 ## 3) VIROSOLVER SETUP
 ###############################################
 virosolver_pars <- read.csv("pars/partab_exp_model_compare.csv")
+
+if(!use_pos){
+  virosolver_pars[virosolver_pars$names == "overall_prob","fixed"] <- 0
+}
 
 pars <- virosolver_pars$values
 names(pars) <- virosolver_pars$names
@@ -254,15 +265,20 @@ prior_func <- function(pars, ...){
 
 ## Test that posterior functions work correctly
 f1 <- create_posterior_func_compare(parTab=virosolver_pars,data=cts_sim_comb_same,PRIOR_FUNC = prior_func,
-                                   INCIDENCE_FUNC=virosolver::exponential_growth_model,use_pos = TRUE)
+                                   INCIDENCE_FUNC=virosolver::exponential_growth_model,use_pos = use_pos)
 f1(virosolver_pars$values)
 f2 <- create_posterior_func_compare(parTab=virosolver_pars,data=cts_sim_comb_late,PRIOR_FUNC = prior_func,
-                                   INCIDENCE_FUNC=virosolver::exponential_growth_model,use_pos = TRUE)
+                                   INCIDENCE_FUNC=virosolver::exponential_growth_model,use_pos = use_pos)
 f2(virosolver_pars$values)
 
 
 data_list <- rep(list(cts_sim_comb_same,cts_sim_comb_late,cts_sim_comb_same),each=nchains)
 runnames <- rep(c("virosolver_same", "virosolver_late","virosolver_same_fixed_pars"),each=nchains)
+
+if(!use_pos){
+  runnames <- paste0(runnames, "all_cts")
+}
+
 chain_nos <- rep(1:nchains,3)
 
 chains <- NULL
@@ -288,7 +304,7 @@ res <- foreach(j=seq_along(chain_nos),.packages = c("extraDistr","tidyverse","pa
                                                 CREATE_POSTERIOR_FUNC=create_posterior_func_compare,
                                                 INCIDENCE_FUNC=virosolver::exponential_growth_model,
                                                 PRIOR_FUNC=prior_func,
-                                                use_pos=TRUE,
+                                                use_pos=use_pos,
                                                 t_dist=NULL)
   }
   covMat <- diag(nrow(startTab[[1]]))
@@ -304,7 +320,7 @@ res <- foreach(j=seq_along(chain_nos),.packages = c("extraDistr","tidyverse","pa
                      CREATE_POSTERIOR_FUNC=create_posterior_func_compare,
                      mvrPars=mvrPars,
                      OPT_TUNING=0.2,
-                     use_pos=TRUE,
+                     use_pos=use_pos,
                      solve_likelihood=TRUE)
   
   ## Read in chain and remove burn in period
@@ -335,6 +351,8 @@ p_LHS <- (p_ct_samp_late+labs(tag="A")+ggtitle("Original variant decreasing, new
 
 
 p_main <- p_LHS | p_RHS
-ggsave("figures/estimate_diffs.png",p_main,height=8,width=8,units="in",dpi=300)
-ggsave("figures/estimate_diffs.pdf",p_main,height=8,width=8)
+if(FALSE){
+  ggsave("figures/estimate_diffs.png",p_main,height=8,width=8,units="in",dpi=300)
+  ggsave("figures/estimate_diffs.pdf",p_main,height=8,width=8)
+}
 
