@@ -218,10 +218,10 @@ plot_simulated_ct_curve_2variants <- function(vl_pars1, vl_pars2,ages=1:35,N=100
 }
 
 
-p_sim_ct_compare_naive <- function(vl_pars1,vl_pars2,virus1_inc,virus2_inc, ages,samp_time,N=100,dotsize=1) {
-  cts_1 <- tibble(ct=simulate_cross_section(vl_pars1, ages, virus1_inc,obs_time=samp_time,N=N),virus="Original variant")
-  cts_2 <- tibble(ct=simulate_cross_section(vl_pars1, ages, virus2_inc,obs_time=samp_time,N=N),virus="New variant, same kinetics")
-  cts_2_alt <- tibble(ct=simulate_cross_section(vl_pars2, ages, virus2_inc,obs_time=samp_time,N=N),virus="New variant, different kinetics")
+p_sim_ct_compare_naive <- function(vl_pars1,vl_pars2,virus1_inc,virus2_inc, ages,samp_time,N=100,dotsize=1,symptom_surveillance=FALSE) {
+  cts_1 <- tibble(ct=simulate_cross_section(vl_pars1, ages, virus1_inc,obs_time=samp_time,N=N,symptom_surveillance),virus="Original variant")
+  cts_2 <- tibble(ct=simulate_cross_section(vl_pars1, ages, virus2_inc,obs_time=samp_time,N=N,symptom_surveillance),virus="New variant, same kinetics")
+  cts_2_alt <- tibble(ct=simulate_cross_section(vl_pars2, ages, virus2_inc,obs_time=samp_time,N=N,symptom_surveillance),virus="New variant, different kinetics")
   cts_sim_comb <- bind_rows(cts_1,cts_2,cts_2_alt) %>% mutate(virus=factor(virus,levels=variant_levels))
   
   pval1 <- as.numeric(wilcox.test(cts_1$ct,cts_2$ct,alternative="two.sided")["p.value"])
@@ -286,7 +286,7 @@ p_sim_ct_compare_naive_symp <- function(ct_values,samp_time,N=100,dotsize=1,samp
   p_ct_samp
 }
 
-p_sim_ct_compare_growth <- function(vl_pars1,vl_pars2,virus1_inc,virus2_inc, ages,combined_summaries,growth_rate_samp,N=100,dotsize=1) {
+p_sim_ct_compare_growth <- function(vl_pars1,vl_pars2,virus1_inc,virus2_inc, ages,combined_summaries,growth_rate_samp,N=100,dotsize=1,symptom_surveillance=FALSE) {
   samp_times <- ct_combined_summaries %>% 
     group_by(virus) %>% 
     mutate(gr_diff=abs(gr - growth_rate_samp)) %>% 
@@ -296,9 +296,9 @@ p_sim_ct_compare_growth <- function(vl_pars1,vl_pars2,virus1_inc,virus2_inc, age
   samp_time2 <- samp_times %>% filter(virus == "New variant, same kinetics") %>% pull(t)
   samp_time2_alt <- samp_times %>% filter(virus == "New variant, different kinetics") %>% pull(t)
   
-  cts_1 <- tibble(ct=simulate_cross_section(vl_pars1, ages, virus1_inc,obs_time=samp_time1,N=N),virus="Original variant")
-  cts_2 <- tibble(ct=simulate_cross_section(vl_pars1, ages, virus2_inc,obs_time=samp_time2,N=N),virus="New variant, same kinetics")
-  cts_2_alt <- tibble(ct=simulate_cross_section(vl_pars2, ages, virus2_inc,obs_time=samp_time2_alt,N=N),virus="New variant, different kinetics")
+  cts_1 <- tibble(ct=simulate_cross_section(vl_pars1, ages, virus1_inc,obs_time=samp_time1,N=N,symptom_surveillance),virus="Original variant")
+  cts_2 <- tibble(ct=simulate_cross_section(vl_pars1, ages, virus2_inc,obs_time=samp_time2,N=N,symptom_surveillance),virus="New variant, same kinetics")
+  cts_2_alt <- tibble(ct=simulate_cross_section(vl_pars2, ages, virus2_inc,obs_time=samp_time2_alt,N=N,symptom_surveillance),virus="New variant, different kinetics")
   cts_sim_comb <- bind_rows(cts_1,cts_2,cts_2_alt) %>% mutate(virus=factor(virus,levels=variant_levels))
   
   pval1 <- as.numeric(wilcox.test(cts_1$ct,cts_2$ct,alternative="two.sided")["p.value"])

@@ -21,16 +21,16 @@ simulate_popn_cts_symptomatic <- function(virus1_inc, virus2_inc,
   v2_linelist$i <- v2_linelist$i + max(v1_linelist$i)
   
   ## Simulate situation where all individuals are observed at some point
-  v1_observed_linelist <- simulate_reporting(v1_linelist %>% filter(is_infected == 1),frac_report=1,timevarying_prob=NULL,solve_times=times,symptomatic=TRUE)
-  v2_observed_linelist <- simulate_reporting(v2_linelist %>% filter(is_infected == 1),frac_report=1,timevarying_prob=NULL,solve_times=times,symptomatic=TRUE)
+  v1_observed_linelist <- v1_linelist %>% filter(is_symp == 1) %>% mutate(sampled_time=onset_time+confirmation_delay)
+  v2_observed_linelist <- v2_linelist %>% filter(is_symp == 1) %>% mutate(sampled_time=onset_time+confirmation_delay)
   
   print("Simulating viral loads")
   ## Simulate Ct values from random cross sections
-  cts_pop_sympt_v1 <- simulate_viral_loads_wrapper(v1_observed_linelist$sampled_individuals %>% filter(!is.na(infection_time)),kinetics_pars=vl_pars1)
+  cts_pop_sympt_v1 <- simulate_viral_loads_wrapper(v1_observed_linelist %>% filter(!is.na(infection_time)),kinetics_pars=vl_pars1)
   print("Virus 1 done")
-  cts_pop_sympt_v2 <- simulate_viral_loads_wrapper(v2_observed_linelist$sampled_individuals %>% filter(!is.na(infection_time)),kinetics_pars=vl_pars1) %>% mutate(virus="New variant, same kinetics")
+  cts_pop_sympt_v2 <- simulate_viral_loads_wrapper(v2_observed_linelist %>% filter(!is.na(infection_time)),kinetics_pars=vl_pars1) %>% mutate(virus="New variant, same kinetics")
   print("Virus 2a done")
-  cts_pop_sympt_v2_alt <- simulate_viral_loads_wrapper(v2_observed_linelist$sampled_individuals %>% filter(!is.na(infection_time)),kinetics_pars=vl_pars2) %>% mutate(virus="New variant, different kinetics")
+  cts_pop_sympt_v2_alt <- simulate_viral_loads_wrapper(v2_observed_linelist %>% filter(!is.na(infection_time)),kinetics_pars=vl_pars2) %>% mutate(virus="New variant, different kinetics")
   print("Virus 2b done")
   
   cts_pop_sympt_comb <- bind_rows(cts_pop_sympt_v1,cts_pop_sympt_v2,cts_pop_sympt_v2_alt) %>% mutate(virus=factor(virus,levels=variant_levels))

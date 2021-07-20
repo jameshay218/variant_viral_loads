@@ -11,11 +11,12 @@ library(virosolver)
 library(tidyverse)
 library(patchwork)
 library(extraDistr)
-library(virosolver)
+#library(virosolver)
 library(ggpubr)
 library(doParallel)
 #library(lazymcmc)
 devtools::load_all("~/Documents/GitHub/lazymcmc/")
+devtools::load_all("~/Documents/GitHub/virosolver/")
 library(rethinking)
 
 ## Where to perform the simulations

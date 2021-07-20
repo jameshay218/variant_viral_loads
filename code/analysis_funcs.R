@@ -75,10 +75,10 @@ calculate_infection_age_distribution <- function(incidence, detectable_props, ag
 
 ## For a given incidence curve (per capita) and curve describing viral kinetics on the Ct scale
 ## Calculates the expected distribution of detectable Ct values and summary statistics for each day
-calculate_ct_distribution <- function(vl_pars, ages, incidence, obs_times){
+calculate_ct_distribution <- function(vl_pars, ages, incidence, obs_times,symptom_surveillance=FALSE){
   ## Use virosolver to get the expected Ct distribution
-  ct_distribution <- pred_dist_wrapper(seq(0,40,by=0.01),obs_times = obs_times,ages,vl_pars,incidence)
-  
+  ct_distribution <- pred_dist_wrapper(seq(0,40,by=0.01),obs_times = obs_times,ages,vl_pars,incidence, symptom_surveillance)
+
   ## Re-scale 
   ct_scaled_dist <- ct_distribution %>% filter(ct < 40) %>% group_by(t) %>% mutate(density_scaled=density/sum(density)) %>%  mutate(cumu_density=cumsum(density_scaled)) 
   
@@ -94,9 +94,9 @@ calculate_ct_distribution <- function(vl_pars, ages, incidence, obs_times){
   return(ct_summary)
 }
 
-simulate_cross_section <- function(pars, ages, incidence, obs_time,N=1000, use_pos=TRUE){
+simulate_cross_section <- function(pars, ages, incidence, obs_time,N=1000, use_pos=TRUE, symptom_surveillance=FALSE){
     ## Use virosolver to get the expected Ct distribution
-    ct_distribution <- pred_dist_wrapper(seq(0,40,by=0.01),obs_times = obs_time,ages,pars,incidence)
+    ct_distribution <- pred_dist_wrapper(seq(0,40,by=0.01),obs_times = obs_time,ages,pars,incidence,symptom_surveillance)
     ## Re-scale 
     if(use_pos){
       ct_distribution <- ct_distribution %>% filter(ct < 40)
@@ -108,9 +108,9 @@ simulate_cross_section <- function(pars, ages, incidence, obs_time,N=1000, use_p
 }
 
 
-simulate_m_cross_sections <- function(pars, ages, incidence, obs_time,N=1000, m=10, use_pos=TRUE){
+simulate_m_cross_sections <- function(pars, ages, incidence, obs_time,N=1000, m=10, use_pos=TRUE, symptom_surveillance=FALSE){
   ## Use virosolver to get the expected Ct distribution
-  ct_distribution <- pred_dist_wrapper(seq(0,40,by=0.01),obs_times = obs_time,ages,pars,incidence)
+  ct_distribution <- pred_dist_wrapper(seq(0,40,by=0.01),obs_times = obs_time,ages,pars,incidence,symptom_surveillance)
   ## Re-scale 
   if(use_pos){
     ct_distribution <- ct_distribution %>% filter(ct < 40)
@@ -255,6 +255,7 @@ create_posterior_func_compare <- function(parTab,
                                           solve_ver="likelihood",
                                           solve_likelihood=TRUE,
                                           use_pos=FALSE,
+                                          symptom_surveillance=FALSE,
                                           ...) {
   par_names <- parTab$names
   pars <- parTab$values
@@ -338,7 +339,7 @@ create_posterior_func_compare <- function(parTab,
           lik <- lik+prior
         }
       } else {
-        preds <- bind_rows(preds, pred_dist_wrapper(seq(0,40,by=1),obs_times,ages,pars,prob_infection_tmp) %>% mutate(variant=variant1))
+        preds <- bind_rows(preds, pred_dist_wrapper(seq(0,40,by=1),obs_times,ages,pars,prob_infection_tmp,symptom_surveillance) %>% mutate(variant=variant1))
       }
     }
     if(solve_ver == "likelihood"){

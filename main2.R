@@ -11,11 +11,11 @@
 library(tidyverse)
 library(patchwork)
 library(extraDistr)
-library(virosolver)
+#library(virosolver)
 library(ggpubr)
 library(lazymcmc)
 library(rethinking)
-#devtools::load_all("~/Documents/GitHub/virosolver")
+devtools::load_all("~/Documents/GitHub/virosolver")
 ## Where to perform the simulations
 HOME_WD <- "~"
 HOME_WD <- "~/Documents/GitHub/variant_viral_loads/"
@@ -35,6 +35,33 @@ source("~/Documents/GitHub/covid19-group-tests/code/viral_kinetics/functions/mod
 model_pars <- read.csv("pars/partab_seir_model.csv")
 vl_pars <- model_pars$values
 names(vl_pars) <- model_pars$names
+
+vl_pars["incu_par1"] <- 1.621
+vl_pars["incu_par2"] <- 0.418
+
+vl_pars["sampling_par1"] <- 5
+vl_pars["sampling_par2"] <- 1
+
+vl_pars["max_incu_period"] <- 50
+vl_pars["max_sampling_delay"] <- 50
+
+ct_test <-seq(0,39.9,by=0.1) 
+tmp_grow<-pred_dist_cpp_symptoms(ct_test,vl_pars["max_incu_period"],vl_pars["max_sampling_delay"],obs_time = 70,pars = vl_pars,
+                       prob_infection = 0.0001*exp(0.07*0:100),sd_mod_vec = rep(1,100))
+
+tmp_decline <-pred_dist_cpp_symptoms(ct_test,vl_pars["max_incu_period"],vl_pars["max_sampling_delay"],obs_time = 70,pars = vl_pars,
+                                 prob_infection = 0.0001*exp(-0.07*0:100),sd_mod_vec = rep(1,100))
+tmp_flat<-pred_dist_cpp_symptoms(ct_test,vl_pars["max_incu_period"],vl_pars["max_sampling_delay"],obs_time = 70,pars = vl_pars,
+                             prob_infection = rep(0.001,100),sd_mod_vec = rep(1,100))
+
+plot(tmp_flat,type='l')
+lines(tmp_grow,col="red")
+lines(tmp_decline,col="green")
+tmp <- pred_dist_cpp(ct_test,ages=seq(1,50,by=1),obs_time = 70,pars=vl_pars,prob_infection = rep(0.001,100),sd_mod_vec = rep(1,100))
+
+plot(tmp)
+lines(tmp1[[1]])
+
 vl_pars["tshift"] <- 1
 vl_pars["true_0"] <- 45
 vl_pars["desired_mode"] <- 4
@@ -232,6 +259,8 @@ ct_dist_symptomatic_all <- simulate_popn_cts_symptomatic(virus1_inc, virus2_inc,
 
 ct_dist_symptomatic_all$p_mean_sympt
 
+p1[[1]] + geom_smooth(data=ct_dist_symptomatic_all$ct_dat_summary,aes(x=sampled_time,y=median_ct,col=virus))
+
 ## Find days since onset in simulated data
 ct_dist_symptomatic_dat <- ct_dist_symptomatic_all$ct_dat_sympt
 ct_dist_symptomatic_dat <- ct_dist_symptomatic_dat %>% mutate(days_since_onset = sampled_time - onset_time)
@@ -302,3 +331,6 @@ ggsave(filename="figures/figS4.png",power_pop_sympt_lm[[6]],height=7,width=5.5,u
 ggsave(filename="figures/figS5.png",power_pop_sympt_lm[[5]],height=7,width=5.5,units="in",dpi=300)
 ggsave(filename="figures/figS4.pdf",power_pop_sympt_lm[[6]],height=7,width=5.5)
 ggsave(filename="figures/figS5.pdf",power_pop_sympt_lm[[5]],height=7,width=5.5)
+
+
+
