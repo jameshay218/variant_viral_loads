@@ -133,6 +133,24 @@ plot_simulated_ct_curve <- function(vl_pars,ages=1:35,N=1000){
   return(p)
 }
 
+plot_simulated_ct_curve_symptomatic <- function(vl_pars,age_max,N=1000,xmax=20){
+  ## Modal Ct values
+  ages <- 1:age_max
+  ## Simulate Ct values
+  sim_cts <- virosolver::simulate_viral_loads_example_symptoms(1:100,vl_pars,N=N)
+  p <- ggplot(sim_cts %>% filter(ct_obs < 40)) + 
+    geom_rect(ymin=42,ymax=vl_pars["intercept"],xmin=-1,xmax=age_max+1,fill="grey70",alpha=0.25) +
+    geom_jitter(aes(x=sampling_delay,y=ct_obs),alpha=0.25,height=0,width=0.25,size=0.2) + 
+    geom_smooth(aes(x=sampling_delay,y=ct_obs),
+                alpha=0.25,size=0.5) +
+    coord_flip()+
+    coord_cartesian(ylim=c(40,5),xlim=c(0,xmax)) +
+    scale_x_continuous(breaks=seq(0, xmax,by=5)) +
+    xlab("Days since symptom onset") + ylab("Ct value") +
+    theme_overall + theme_nice_axes
+  return(p)
+}
+
 
 plot_indiv_simulated_ct_curve <- function(ct_values,ages=1:35,N=1000){
   ct_values_mean <- ct_values %>% 
@@ -162,7 +180,7 @@ plot_indiv_simulated_ct_curve <- function(ct_values,ages=1:35,N=1000){
   return(p)
 }
 
-plot_simulated_ct_curve_symptomatic <- function(ct_values,age_max=20,N=1000){
+plot_simulated_ct_curve_symptomatic_OLD <- function(ct_values,age_max=20,N=1000){
   p <- ct_values %>% 
     filter(ct < 40) %>%
     filter(days_since_onset<=age_max) %>% 
@@ -216,6 +234,39 @@ plot_simulated_ct_curve_2variants <- function(vl_pars1, vl_pars2,ages=1:35,N=100
     theme_overall + theme_nice_axes + theme(legend.position=c(0.7,0.8))
   return(p)
 }
+
+
+plot_simulated_ct_curve_2variants_symptomatic <- function(vl_pars1, vl_pars2,N=1000,xmax=20){
+  ## Modal Ct values
+  ages <- 1:100
+  
+  ## Modal Ct values
+  modal_ct1 <- tibble(ct=viral_load_func(vl_pars1, ages),age=ages,virus="Original variant")
+  modal_ct2 <- tibble(ct=viral_load_func(vl_pars1, ages),age=ages,virus="New variant, same kinetics")
+  modal_ct2_alt <- tibble(ct=viral_load_func(vl_pars2, ages),age=ages,virus="New variant, different kinetics")
+  modal_ct_all <- bind_rows(modal_ct1,modal_ct2,modal_ct2_alt) %>% mutate(virus=factor(virus,levels=variant_levels))
+  
+  ## Simulate Ct values
+  sim_cts1 <- virosolver::simulate_viral_loads_example_symptoms(ages,vl_pars1,N=N) %>% mutate(virus="Original variant")
+  sim_cts2 <- virosolver::simulate_viral_loads_example_symptoms(ages,vl_pars1,N=N)%>% mutate(virus="New variant, same kinetics")
+  sim_cts2_alt <- virosolver::simulate_viral_loads_example_symptoms(ages,vl_pars2,N=N)%>% mutate(virus="New variant, different kinetics")
+  sim_cts_all <- bind_rows(sim_cts1, sim_cts2, sim_cts2_alt) %>% mutate(virus=factor(virus,levels=variant_levels))
+  
+  p <- ggplot(sim_cts_all %>% filter(ct_obs < 40)) + 
+    geom_rect(ymin=42,ymax=vl_pars["intercept"],xmin=-1,xmax=max(ages)+1,fill="grey70",alpha=0.25) +
+    geom_jitter(aes(x=sampling_delay,y=ct_obs,col=virus),alpha=0.25,height=0,width=0.25,size=0.2) + 
+    geom_smooth(aes(x=sampling_delay,y=ct_obs,col=virus,linetype=virus,fill=virus),alpha=0.1,size=0.5) +
+    coord_flip()+
+    coord_cartesian(ylim=c(40,5),xlim=c(0,xmax)) +
+    scale_x_continuous(breaks=seq(0, xmax,by=5)) +
+    variant_color_scale_fig2 + variant_fill_scale_fig2 +
+    scale_linetype_manual(name="Variant",values=c("Original variant"="solid","New variant, same kinetics"="dashed", "New variant, different kinetics"="solid")) +
+    scale_size_manual(name="Variant",values=c("Original variant"=0.75,"New variant, same kinetics"=1, "New variant, different kinetics"=0.75)) +
+    xlab("Days since symptom onset") + ylab("Ct value") +
+    theme_overall + theme_nice_axes + theme(legend.position=c(0.7,0.8))
+  return(p)
+}
+
 
 
 p_sim_ct_compare_naive <- function(vl_pars1,vl_pars2,virus1_inc,virus2_inc, ages,samp_time,N=100,dotsize=1,symptom_surveillance=FALSE) {

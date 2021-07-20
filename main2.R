@@ -42,25 +42,8 @@ vl_pars["incu_par2"] <- 0.418
 vl_pars["sampling_par1"] <- 5
 vl_pars["sampling_par2"] <- 1
 
-vl_pars["max_incu_period"] <- 50
-vl_pars["max_sampling_delay"] <- 50
-
-ct_test <-seq(0,39.9,by=0.1) 
-tmp_grow<-pred_dist_cpp_symptoms(ct_test,vl_pars["max_incu_period"],vl_pars["max_sampling_delay"],obs_time = 70,pars = vl_pars,
-                       prob_infection = 0.0001*exp(0.07*0:100),sd_mod_vec = rep(1,100))
-
-tmp_decline <-pred_dist_cpp_symptoms(ct_test,vl_pars["max_incu_period"],vl_pars["max_sampling_delay"],obs_time = 70,pars = vl_pars,
-                                 prob_infection = 0.0001*exp(-0.07*0:100),sd_mod_vec = rep(1,100))
-tmp_flat<-pred_dist_cpp_symptoms(ct_test,vl_pars["max_incu_period"],vl_pars["max_sampling_delay"],obs_time = 70,pars = vl_pars,
-                             prob_infection = rep(0.001,100),sd_mod_vec = rep(1,100))
-
-plot(tmp_flat,type='l')
-lines(tmp_grow,col="red")
-lines(tmp_decline,col="green")
-tmp <- pred_dist_cpp(ct_test,ages=seq(1,50,by=1),obs_time = 70,pars=vl_pars,prob_infection = rep(0.001,100),sd_mod_vec = rep(1,100))
-
-plot(tmp)
-lines(tmp1[[1]])
+vl_pars["max_incu_period"] <- 25
+vl_pars["max_sampling_delay"] <- 25
 
 vl_pars["tshift"] <- 1
 vl_pars["true_0"] <- 45
@@ -152,10 +135,10 @@ p_ct_model_2 <- plot_simulated_ct_curve_2variants(vl_pars,vl_pars_both,ages,20)
 p_ct_compare1 <- p_sim_ct_compare_naive(vl_pars,vl_pars_both,virus1_inc,virus2_inc, ages,samp_time=samp_time,N=100)
 
 ## Using virosolver package, get predicted Ct distribution on each day of the simulation
-ct_dist_1 <- calculate_ct_distribution(vl_pars, ages, virus1_inc,times[times >= pars["importtime1"]+25]) %>% mutate(virus="Original variant")
-ct_dist_2 <- calculate_ct_distribution(vl_pars, ages, virus2_inc,times[times >= pars["importtime2"]+25]) %>% mutate(virus="New variant, same kinetics")
-ct_dist_2_alt <- calculate_ct_distribution(vl_pars_both, ages, virus2_inc,times[times >= pars["importtime2"]+25]) %>% mutate(virus="New variant, different kinetics")
-ct_dist_overall <- calculate_ct_distribution(vl_pars, ages, virus_inc,times[times >= pars["importtime1"]+25]) %>% mutate(virus="Overall")
+ct_dist_1 <- calculate_ct_distribution(vl_pars, ages, virus1_inc,times[times >= pars["importtime1"]+35]) %>% mutate(virus="Original variant")
+ct_dist_2 <- calculate_ct_distribution(vl_pars, ages, virus2_inc,times[times >= pars["importtime2"]+35]) %>% mutate(virus="New variant, same kinetics")
+ct_dist_2_alt <- calculate_ct_distribution(vl_pars_both, ages, virus2_inc,times[times >= pars["importtime2"]+35]) %>% mutate(virus="New variant, different kinetics")
+ct_dist_overall <- calculate_ct_distribution(vl_pars, ages, virus_inc,times[times >= pars["importtime1"]+35]) %>% mutate(virus="Overall")
 ct_combined_summaries <- bind_rows(ct_dist_1,ct_dist_2,ct_dist_overall,ct_dist_2_alt)
 ct_combined_summaries <- ct_combined_summaries %>% left_join(grs) %>% ungroup()
 
@@ -244,33 +227,23 @@ ggsave(filename="figures/figS3_indiv_down.png",power_indiv_gr_down[[3]],height=7
 ###############################################
 ## Symptomatic reporting population dataset
 ###############################################
-confirm_delay_par1_v1 <- 5
-confirm_delay_par2_v1 <- 1
+## Using virosolver package, get predicted Ct distribution on each day of the simulation
+ct_dist_1_symptomatic <- calculate_ct_distribution(vl_pars, ages, virus1_inc,times[times >= pars["importtime1"]+35],symptom_surveillance = TRUE) %>% mutate(virus="Original variant")
+ct_dist_2_symptomatic <- calculate_ct_distribution(vl_pars, ages, virus2_inc,times[times >= pars["importtime2"]+35],symptom_surveillance = TRUE) %>% mutate(virus="New variant, same kinetics")
+ct_dist_2_alt_symptomatic <- calculate_ct_distribution(vl_pars_both, ages, virus2_inc,times[times >= pars["importtime2"]+35],symptom_surveillance = TRUE) %>% mutate(virus="New variant, different kinetics")
+ct_dist_overall_symptomatic <- calculate_ct_distribution(vl_pars, ages, virus_inc,times[times >= pars["importtime1"]+35],symptom_surveillance = TRUE) %>% mutate(virus="Overall")
+ct_combined_summaries_symptomatic <- bind_rows(ct_dist_1_symptomatic,ct_dist_2_symptomatic,ct_dist_overall_symptomatic,ct_dist_2_alt_symptomatic)
+ct_combined_summaries_symptomatic <- ct_combined_summaries_symptomatic %>% left_join(grs) %>% ungroup()
 
-confirm_delay_par1_v2 <- 5
-confirm_delay_par2_v2 <- 1
-
-## Simulate lots of symptomatic reported Ct values for the entire incidence curve
-ct_dist_symptomatic_all <- simulate_popn_cts_symptomatic(virus1_inc, virus2_inc, 
-                                                     vl_pars, vl_pars_both,
-                                                     10000000, times,
-                                                     confirm_delay_par1_v1=confirm_delay_par1_v1, confirm_delay_par2_v1=confirm_delay_par2_v1,
-                                                     confirm_delay_par1_v2=confirm_delay_par1_v2, confirm_delay_par2_v2 = confirm_delay_par2_v2)
-
-ct_dist_symptomatic_all$p_mean_sympt
-
-p1[[1]] + geom_smooth(data=ct_dist_symptomatic_all$ct_dat_summary,aes(x=sampled_time,y=median_ct,col=virus))
-
-## Find days since onset in simulated data
-ct_dist_symptomatic_dat <- ct_dist_symptomatic_all$ct_dat_sympt
-ct_dist_symptomatic_dat <- ct_dist_symptomatic_dat %>% mutate(days_since_onset = sampled_time - onset_time)
-ct_dist_symptomatic_dat <- ct_dist_symptomatic_dat %>% dplyr::select(-ct) %>% rename(ct=ct_obs)
+p1_symptomatic <- plot_medians_and_skew(ct_combined_summaries_symptomatic)
 
 ## Plot Ct values over time since infection
-p_sympt_ct_kinetics_pop <- plot_simulated_ct_curve_symptomatic(ct_values=ct_dist_symptomatic_dat)
-p_sympt_ct_kinetics_pop <- p_sympt_ct_kinetics_pop + labs(tag="A") + variant_color_scale_fig2 + variant_fill_scale_fig2
+p_sympt_ct_kinetics_pop <- plot_simulated_ct_curve_2variants_symptomatic(vl_pars,vl_pars_both, N=10000,xmax=20)
+p_sympt_ct_kinetics_pop <- p_sympt_ct_kinetics_pop + labs(tag="A")
 
-p_symptom_compare <- plot_smooth_mean_cts_symp(ct_values=ct_dist_symptomatic_dat) + 
+p_symptom_compare <- p1_symptomatic[[1]] + 
+  coord_cartesian(ylim=c(28.5,21.8)) +
+  scale_y_continuous(breaks=seq(22,28,by=1)) +
   geom_vline(xintercept=samp_time,linetype="dotted",size=1,col="grey40")+
   labs(tag="B")
 
