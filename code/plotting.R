@@ -270,9 +270,9 @@ plot_simulated_ct_curve_2variants_symptomatic <- function(vl_pars1, vl_pars2,N=1
 
 
 p_sim_ct_compare_naive <- function(vl_pars1,vl_pars2,virus1_inc,virus2_inc, ages,samp_time,N=100,dotsize=1,symptom_surveillance=FALSE) {
-  cts_1 <- tibble(ct=simulate_cross_section(vl_pars1, ages, virus1_inc,obs_time=samp_time,N=N,symptom_surveillance),virus="Original variant")
-  cts_2 <- tibble(ct=simulate_cross_section(vl_pars1, ages, virus2_inc,obs_time=samp_time,N=N,symptom_surveillance),virus="New variant, same kinetics")
-  cts_2_alt <- tibble(ct=simulate_cross_section(vl_pars2, ages, virus2_inc,obs_time=samp_time,N=N,symptom_surveillance),virus="New variant, different kinetics")
+  cts_1 <- tibble(ct=simulate_cross_section(vl_pars1, ages, virus1_inc,obs_time=samp_time,N=N,use_pos=TRUE,symptom_surveillance=symptom_surveillance),virus="Original variant")
+  cts_2 <- tibble(ct=simulate_cross_section(vl_pars1, ages, virus2_inc,obs_time=samp_time,N=N,use_pos=TRUE,symptom_surveillance=symptom_surveillance),virus="New variant, same kinetics")
+  cts_2_alt <- tibble(ct=simulate_cross_section(vl_pars2, ages, virus2_inc,obs_time=samp_time,N=N,use_pos=TRUE,symptom_surveillance=symptom_surveillance),virus="New variant, different kinetics")
   cts_sim_comb <- bind_rows(cts_1,cts_2,cts_2_alt) %>% mutate(virus=factor(virus,levels=variant_levels))
   
   pval1 <- as.numeric(wilcox.test(cts_1$ct,cts_2$ct,alternative="two.sided")["p.value"])
@@ -301,41 +301,6 @@ p_sim_ct_compare_naive <- function(vl_pars1,vl_pars2,virus1_inc,virus2_inc, ages
   p_ct_samp
 }
 
-p_sim_ct_compare_naive_symp <- function(ct_values,samp_time,N=100,dotsize=1,samp_window=7){
-  cts_1 <- ct_values %>% filter(virus=="Original variant",sampled_time>= samp_time - (samp_window/2), sampled_time <= samp_time + (samp_window/2)) %>% sample_n(min(N, n()))
-  print(nrow(cts_1))
-  cts_2 <- ct_values %>% filter(virus=="New variant, same kinetics",sampled_time>= samp_time - (samp_window/2), sampled_time <= samp_time + (samp_window/2)) %>% sample_n(min(N, n()))
-  print(nrow(cts_2))
-  cts_2_alt <- ct_values %>% filter(virus=="New variant, different kinetics",sampled_time>= samp_time - (samp_window/2), sampled_time <= samp_time + (samp_window/2)) %>% sample_n(min(N, n()))
-  print(nrow(cts_2_alt))
-                                                                                              
-  cts_sim_comb <- bind_rows(cts_1,cts_2,cts_2_alt) %>% mutate(virus=factor(virus,levels=variant_levels))
-  
-  pval1 <- as.numeric(wilcox.test(cts_1$ct,cts_2$ct,alternative="two.sided")["p.value"])
-  pval3 <- as.numeric(wilcox.test(cts_1$ct,cts_2_alt$ct,alternative="two.sided")["p.value"])
-  pval2 <- as.numeric(wilcox.test(cts_2$ct,cts_2_alt$ct,alternative="two.sided")["p.value"])
-  
-  pval_labels <- tibble(x=c(1.5,2.5,2),y=c(12,10,8)-1,pval=signif(c(pval1,pval2,pval3),3),
-                        signf=ifelse(pval>0.05,"",ifelse(pval > 0.01,"*",ifelse(pval>0.001,"**","***"))),
-                        label=paste0(signf,"p=",pval))
-  pval_lines <- tibble(x=c(1,2,1),xend=c(2,3,3),y=c(12,10,8),yend=c(12,10,8))
-  p_ct_samp <- ggplot(cts_sim_comb) + 
-    geom_violin(aes(x=virus,y=ct,fill=virus),alpha=0.1,trim=FALSE,col=NA,width=0.75) +
-    geom_dotplot(aes(x=virus,y=ct,fill=virus),binaxis="y",stackdir="center",binwidth=1,dotsize=dotsize) + 
-    geom_errorbar(data=cts_sim_comb%>%group_by(virus)%>%summarize(median_ct=median(ct)),
-                  aes(y=median_ct,ymin=median_ct,ymax=median_ct,x=virus),size=0.5,col="grey10") +
-    geom_segment(data=pval_lines,aes(x=x,xend=xend,y=y,yend=yend),size=0.5) +
-    geom_text(data=pval_labels,aes(x=x,y=y,label=label),size=2) +
-    variant_fill_scale + variant_color_scale +
-    scale_y_continuous(trans="reverse",limits=c(40,7)) +
-    ylab("Ct value") +
-    theme_overall + theme_nice_axes + theme(legend.position="none",axis.title.x=element_blank(),plot.title=element_text(size=7)) +
-    scale_x_discrete(labels = c("Original variant" = "Original variant",
-                                "New variant, same kinetics"="New variant,\nsame kinetics",
-                                "New variant, different kinetics"="New variant,\ndifferent kinetics")) +
-    ggtitle(paste0("Wilcoxon Rank Sum test on recently symptomatic samples from day ", samp_time))
-  p_ct_samp
-}
 
 p_sim_ct_compare_growth <- function(vl_pars1,vl_pars2,virus1_inc,virus2_inc, ages,combined_summaries,growth_rate_samp,N=100,dotsize=1,symptom_surveillance=FALSE) {
   samp_times <- ct_combined_summaries %>% 
@@ -347,9 +312,9 @@ p_sim_ct_compare_growth <- function(vl_pars1,vl_pars2,virus1_inc,virus2_inc, age
   samp_time2 <- samp_times %>% filter(virus == "New variant, same kinetics") %>% pull(t)
   samp_time2_alt <- samp_times %>% filter(virus == "New variant, different kinetics") %>% pull(t)
   
-  cts_1 <- tibble(ct=simulate_cross_section(vl_pars1, ages, virus1_inc,obs_time=samp_time1,N=N,symptom_surveillance),virus="Original variant")
-  cts_2 <- tibble(ct=simulate_cross_section(vl_pars1, ages, virus2_inc,obs_time=samp_time2,N=N,symptom_surveillance),virus="New variant, same kinetics")
-  cts_2_alt <- tibble(ct=simulate_cross_section(vl_pars2, ages, virus2_inc,obs_time=samp_time2_alt,N=N,symptom_surveillance),virus="New variant, different kinetics")
+  cts_1 <- tibble(ct=simulate_cross_section(vl_pars1, ages, virus1_inc,obs_time=samp_time1,N=N,use_pos=TRUE,symptom_surveillance=symptom_surveillance),virus="Original variant")
+  cts_2 <- tibble(ct=simulate_cross_section(vl_pars1, ages, virus2_inc,obs_time=samp_time2,N=N,use_pos=TRUE,symptom_surveillance=symptom_surveillance),virus="New variant, same kinetics")
+  cts_2_alt <- tibble(ct=simulate_cross_section(vl_pars2, ages, virus2_inc,obs_time=samp_time2_alt,N=N,use_pos=TRUE,symptom_surveillance=symptom_surveillance),virus="New variant, different kinetics")
   cts_sim_comb <- bind_rows(cts_1,cts_2,cts_2_alt) %>% mutate(virus=factor(virus,levels=variant_levels))
   
   pval1 <- as.numeric(wilcox.test(cts_1$ct,cts_2$ct,alternative="two.sided")["p.value"])
@@ -924,3 +889,64 @@ plot_virosolver_comparisons <- function(chain, true_vals, real_scales, real_v1_g
 }
 
 
+
+plot_time_since_infection <- function(obs_times, vl_pars1, vl_pars2, prob_infection1, prob_infection2){
+  variants <- c("Original variant","New variant")
+  
+  comb_dat <- NULL
+  index <- 1
+  for(j in seq_along(variants)){
+    if(j == 1){
+      pars <- vl_pars1
+      prob_infection <- prob_infection1
+    } else {
+      pars <- vl_pars2
+      prob_infection <- prob_infection2
+    }
+    max_age <- pars["max_incu_period"] + pars["max_sampling_delay"]
+   
+    ## Time at which standard deviation is reduced
+    t_switch <-  pars["t_switch"] + pars["desired_mode"] + pars["tshift"]
+    sd_mod <- rep(pars["sd_mod"], max_age) ## Up until t_switch, full standard deviation
+    
+    ## Prior to t_switch, sd=1
+    unmod_vec <- 1:min(t_switch,max_age)
+    sd_mod[unmod_vec] <- 1
+    
+    ## For the next sd_mod_wane days, variance about modal Ct trajectory decrease linearly
+    decrease_vec <- (t_switch+1):(t_switch+pars["sd_mod_wane"])
+    sd_mod[decrease_vec] <- 1 - ((1-pars["sd_mod"])/pars["sd_mod_wane"])*seq_len(pars["sd_mod_wane"])
+    
+    for(obs_time in obs_times){
+      ## Restrict ages to times occurring before 
+      ## time of sample collection (single cross section)
+      
+      ## Returns the full probability density distribution to simulate from
+      densities <- pred_age_since_inf_symptomatic(pars["max_incu_period"],pars["max_sampling_delay"],obs_time,
+                                                  pars, prob_infection, sd_mod)
+      
+      comb_dat[[index]] <- tibble(age=0:(max_age),density=densities, t=obs_time,virus=variants[j])
+      index <- index + 1
+    }
+  }
+  comb_dat <- do.call("bind_rows",comb_dat)
+
+  prob_dist_1 <- comb_dat %>% filter(virus == "Original variant") %>% pull(density)
+  prob_dist_2 <- comb_dat %>% filter(virus == "New variant") %>% pull(density)
+  
+  mean1 <- mean(sample(0:max_age,1000000,prob=prob_dist_1,replace=TRUE))
+  mean2 <- mean(sample(0:max_age,1000000,prob=prob_dist_2,replace=TRUE))
+  
+  p <- ggplot(comb_dat) + 
+    geom_ribbon(aes(x=age,ymin=0,ymax=density,fill=virus,group=virus),alpha=0.25,col="black") +
+    geom_vline(data=tibble(virus=c("Original variant","New variant"), mean_delay=c(mean1,mean2)),aes(xintercept=mean_delay,col=virus),linetype="dashed") +
+    variant_fill_scale_min + variant_color_scale_min +
+    coord_cartesian(xlim=c(0,25)) +
+    scale_x_continuous(breaks=seq(0,30,by=5)) +
+    scale_y_continuous(expand=c(0,0),breaks=seq(0,1,by=0.025)) +
+    ylab("Density") +
+    xlab("Time since infection\n(incubation period + sampling delay)") +
+    theme_overall + theme_nice_axes +
+    theme(legend.position=c(0.8,0.8))
+  p
+}
