@@ -63,7 +63,7 @@ mcmcPars_ct_pt <- list("iterations"=50000,"popt"=0.234,"opt_freq"=1000,
                        "parallel_tempering_iter" = 5,"max_adaptive_period" = 50000, 
                        "adaptiveLeeway" = 0.2, "max_total_iterations" = 50000)
 
-use_pos <- FALSE ## If TRUE, only uses detectable Ct values. If FALSE, uses all Ct values.
+use_pos <- TRUE ## If TRUE, only uses detectable Ct values. If FALSE, uses all Ct values.
 
 ###############################################
 ## 1) SEIR SIMULATION
