@@ -95,22 +95,22 @@ plot_smooth_mean_cts_symp <- function(ct_values){
 plot_growth_rate_lineups <- function(ct_combined_summaries){
   p_medians <- ct_combined_summaries %>% pivot_longer(-c(t,virus,gr,inc)) %>% filter(name %in% c("median")) %>% filter(virus != "Overall") %>%
     ggplot() +
-    geom_line(aes(x=gr,y=value,col=virus,linetype=virus),size=0.75) +
+    geom_line(aes(x=gr,y=value,col=virus),size=0.75) +
     ylab("Median Ct") +
     xlab("Growth rate") +
     scale_x_continuous(trans="reverse") +
     scale_y_continuous(trans="reverse") +
-    variant_color_scale + variant_linetype_scale + 
+    variant_color_scale_fig2 + #variant_linetype_scale + 
     theme_overall + theme_nice_axes + theme(legend.position="none")
   
   p_skews <- ct_combined_summaries %>% pivot_longer(-c(t,virus,gr,inc)) %>% filter(name %in% c("skewness")) %>% filter(virus != "Overall") %>%
     ggplot() +
-    geom_line(aes(x=gr,y=value,col=virus,linetype=virus,size=virus)) +
+    geom_line(aes(x=gr,y=value,col=virus,size=virus)) +
     scale_x_continuous(trans="reverse") +
     ylab("Skewness of Cts") +
     xlab("Growth rate") +
-    variant_color_scale +
-    theme_overall + variant_linetype_scale +
+    variant_color_scale_fig2 +
+    theme_overall + #variant_linetype_scale +
     theme_nice_axes + theme(legend.position="bottom")
   return(list(p_medians, p_skews))
 }

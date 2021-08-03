@@ -11,13 +11,12 @@ library(virosolver)
 library(tidyverse)
 library(patchwork)
 library(extraDistr)
-#library(virosolver)
 library(ggpubr)
 library(doParallel)
-#library(lazymcmc)
-devtools::load_all("~/Documents/GitHub/lazymcmc/")
-devtools::load_all("~/Documents/GitHub/virosolver/")
+library(lazymcmc)
 library(rethinking)
+#devtools::load_all("~/Documents/GitHub/lazymcmc/")
+#devtools::load_all("~/Documents/GitHub/virosolver/")
 
 ## Where to perform the simulations
 HOME_WD <- "~"
@@ -31,9 +30,6 @@ source("code/seir_funcs.R")
 source("code/analysis_funcs.R")
 source("code/invasion_rates_KISSLER2020.R")
 source("code/simulate_symptomatic_population.R")
-source('~/Documents/GitHub/covid19-group-tests/code/viral_kinetics/functions/simulation_functions.R')
-source("~/Documents/GitHub/covid19-group-tests/code/viral_kinetics/functions/model_funcs_multivariate_hinge.R")
-
 
 ## Set up cluster for parallel chains
 n_clusters <- 9

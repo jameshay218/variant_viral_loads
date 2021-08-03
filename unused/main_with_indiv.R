@@ -165,7 +165,7 @@ p_ct_samp_gr1 <- p_sim_ct_compare_growth(vl_pars,vl_pars_both,virus1_inc,virus2_
 set.seed(7)
 p_ct_samp_gr2 <- p_sim_ct_compare_growth(vl_pars,vl_pars_both,virus1_inc,virus2_inc, ages,combined_summaries,gr_tests[2],N=100,dotsize=1)
 
-fig2 <- (p_aligned_median + labs(tag="A")) / 
+fig2 <- (p_aligned_median+ theme(legend.position=c(0.85,0.85)) + labs(tag="A")) / 
            (p_ct_samp_gr1+ labs(tag="B"))  / 
            (p_ct_samp_gr2+ labs(tag="C")) 
 ggsave(fig2,filename = "figures/fig2.pdf",height=7,width=5)
