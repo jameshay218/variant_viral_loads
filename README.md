@@ -12,7 +12,7 @@ The two main analyses scripts, `main.R` and `main_infer_dynamics.R` can be run s
 There are a number of package from CRAN also required:
 
 ``` r
-c("tidyverse","ggthemes","ggpubr","patchwork","rethinking",
+c("tidyverse","ggthemes","ggpubr","patchwork","moments",
 "fitdistrplus","deSolve","doParallel","coda")
 ```
 

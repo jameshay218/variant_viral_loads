@@ -14,7 +14,6 @@ library(extraDistr)
 library(ggpubr)
 library(doParallel)
 library(lazymcmc)
-library(rethinking)
 #devtools::load_all("~/Documents/GitHub/lazymcmc/")
 #devtools::load_all("~/Documents/GitHub/virosolver/")
 
@@ -52,13 +51,13 @@ ct_diff <- 5
 tswitch_diff <- 5
 
 ## How many Ct values to simulate at each sample time?
-sample_size <- 1000
+sample_size <- 100
 
 ## MCMC settings
 nchains <- 3
 n_temperatures <- 10
 mcmcPars_ct_pt <- list("iterations"=50000,"popt"=0.234,"opt_freq"=1000,
-                       "thin"=100,"adaptive_period"=50000,"save_block"=1000,
+                       "thin"=10,"adaptive_period"=50000,"save_block"=1000,
                        "temperature" = seq(1,101,length.out=n_temperatures),
                        "parallel_tempering_iter" = 5,"max_adaptive_period" = 50000, 
                        "adaptiveLeeway" = 0.2, "max_total_iterations" = 50000)
@@ -279,15 +278,13 @@ if(!use_pos){
 chain_nos <- rep(1:nchains,3)
 
 chains <- NULL
-res <- foreach(j=seq_along(chain_nos),.packages = c("extraDistr","tidyverse","patchwork","virosolver")) %dopar% {
-  devtools::load_all(paste0(HOME_WD,"/lazymcmc"))
-  
+res <- foreach(j=seq_along(chain_nos),.packages = c("extraDistr","tidyverse","patchwork","virosolver","lazymcmc")) %dopar% {
   data_use <- data_list[[j]]
   chain_no <- chain_nos[j]
   runname <- runnames[j]
   
   if(!file.exists(paste0("chains/",runname))){
-    dir.create(paste0("chains/",runname))
+    dir.create(paste0("chains/",runname),recursive = TRUE)
   }
   
   tmp_pars <- virosolver_pars

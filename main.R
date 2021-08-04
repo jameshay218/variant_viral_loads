@@ -14,7 +14,6 @@ library(extraDistr)
 library(virosolver)
 library(ggpubr)
 library(lazymcmc)
-library(rethinking)
 ## Where to perform the simulations
 HOME_WD <- "~"
 HOME_WD <- "~/Documents/GitHub/variant_viral_loads/"
