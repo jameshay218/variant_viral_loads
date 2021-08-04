@@ -382,6 +382,11 @@ summary {
 <h1>Viral loads observed under competing strain dynamics</h1>
 <p>This Git repository accompanies the preprint available <a href="https://www.medrxiv.org/content/10.1101/2021.07.27.21261224v1">here</a>. In summary, these analyses investigate how viral loads in an infected population change over the course of a two-strain epidemic.</p>
 <p><strong>NOTE TO REVIEWERS:</strong> please do report an issue or send me an email if you run into issues (assuming this acceptable in with blinded peer review).</p>
+<div id="test-status" class="section level2">
+<h2>Test status</h2>
+<p>This code has been tested on two separate machines, both running macOS Big Sur version 11.1. The code was developed using R version 4.0.2, but should run on early versions. No non-standard hardware is required. Install time should take around 10-15 minutes, accounting for reading instructions and download times. Installation may take a bit longer if you need to install a compiler and configure your Rtools.</p>
+<p>The <code>main.R</code> script will take ~30 minutes to run, but the run time can be shortened by reducing the number of repeats/trials being simulated. The <code>main_infer_dynamics.R</code> script will take a couple of hours, but can be shortened by reducing the number of MCMC iterations and adaptive period in the <code>mcmc_pars_pt</code> variable.</p>
+</div>
 <div id="setup" class="section level2">
 <h2>Setup</h2>
 <p>The two main analyses scripts, <code>main.R</code> and <code>main_infer_dynamics.R</code> can be run simply by sourcing the scripts. However, there are two R packages on Github that must first be installed:</p>
@@ -390,7 +395,7 @@ summary {
 <li><code>virosolver</code> is used for the viral kinetics model and Ct-based inference. This can be installed using <code>devtools::install_github(&quot;jameshay218/virosolver&quot;)</code>, with further installation and usage instructions available <a href="https://github.com/jameshay218/virosolver/">here</a>.</li>
 </ol>
 <p>There are a number of package from CRAN also required:</p>
-<pre class="r"><code>c(&quot;tidyverse&quot;,&quot;ggthemes&quot;,&quot;ggpubr&quot;,&quot;patchwork&quot;,&quot;rethinking&quot;,
+<pre class="r"><code>c(&quot;tidyverse&quot;,&quot;ggthemes&quot;,&quot;ggpubr&quot;,&quot;patchwork&quot;,&quot;moments&quot;,
 &quot;fitdistrplus&quot;,&quot;deSolve&quot;,&quot;doParallel&quot;,&quot;coda&quot;)</code></pre>
 <p>Note that this code uses compiled C++ code (using Rcpp), so you will need to have a C++ compiler (Rtools on Windows, Xcode on Mac) installed.</p>
 </div>
@@ -411,7 +416,7 @@ summary {
 </div>
 <div id="part-2-inferring-differences-in-epidemic-dynamics-and-viral-kinetics" class="section level2">
 <h2>Part 2: inferring differences in epidemic dynamics and viral kinetics</h2>
-<p>An example run of simulating a dataset and using <code>virosolver</code> to re-estimate variant-specific viral kinetics and epidemic dynamics is given in <code>main_infer_dynamics.R</code>. As above, just change the <code>HOME_WD</code> variable at the top of the script and step through the code. This script will simulate a dataset with cross-sectional samples for two variants with different dynamics, and then use <code>virosolver</code> to estimate the posterior distribution of the viral kinetics parameters and epidemic growth rate conditional on the observed data. The user can adjust the priors assumed for the model. Finally, the script will read in the MCMC chains and plot some posterior diagnostics/results. Note that with these chain lengths and the use of parallel tempering, convergence appears reliable. However, users are encouraged to check MCMC trace plots, Gelman-Rubin diagnostics and effective sample sizes.</p>
+<p>An example run of simulating a dataset and using <code>virosolver</code> to re-estimate variant-specific viral kinetics and epidemic dynamics is given in <code>main_infer_dynamics.R</code>. As above, just change the <code>HOME_WD</code> variable at the top of the script and step through the code. This script will simulate a dataset with cross-sectional samples for two variants with different dynamics, and then use <code>virosolver</code> to estimate the posterior distribution of the viral kinetics parameters and epidemic growth rate conditional on the observed data. The user can adjust the priors assumed for the model. Finally, the script will read in the MCMC chains and plot some posterior diagnostics/results. Note that with these chain lengths and the use of parallel tempering, convergence has been consistently reliable. However, users are encouraged to check MCMC trace plots, Gelman-Rubin diagnostics and effective sample sizes.</p>
 <p>Rerunning all of the analyses for this section requires the use of a computing cluster due to run time of re-fitting the model for 100 simulated datasets. Although tailored to the Harvard School of Public Health computing cluster, these scripts can be found in the <code>scripts</code> folder:</p>
 <ul>
 <li><code>scripts/virosolver_different_grs.sh</code>, which calls <code>code/virosolver_different_grs_cluster.R</code>. Note that this R script is almost identical to <code>main_infer_dynamics.R</code>. This underpins the analyses where simultaneously seedded variants with different growth rates are compared early int he epidemic.</li>

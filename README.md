@@ -3,6 +3,11 @@ This Git repository accompanies the preprint available [here](https://www.medrxi
 
 **NOTE TO REVIEWERS:** please do report an issue or send me an email if you run into issues (assuming this acceptable in with blinded peer review).
 
+## Test status
+This code has been tested on two separate machines, both running macOS Big Sur version 11.1. The code was developed using R version 4.0.2, but should run on early versions. No non-standard hardware is required. Install time should take around 10-15 minutes, accounting for reading instructions and download times. Installation may take a bit longer if you need to install a compiler and configure your Rtools.
+
+The `main.R` script will take ~30 minutes to run, but the run time can be shortened by reducing the number of repeats/trials being simulated. The `main_infer_dynamics.R` script will take a couple of hours, but can be shortened by reducing the number of MCMC iterations and adaptive period in the `mcmc_pars_pt` variable.
+
 ## Setup
 The two main analyses scripts, `main.R` and `main_infer_dynamics.R` can be run simply by sourcing the scripts. However, there are two R packages on Github that must first be installed:
 
