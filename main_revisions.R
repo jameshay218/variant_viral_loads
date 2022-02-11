@@ -27,6 +27,8 @@ source("code/analysis_funcs.R")
 source("code/invasion_rates_KISSLER2020.R")
 source("code/simulate_symptomatic_population.R")
 
+set.seed(123)
+
 model_pars <- read.csv("pars/partab_seir_model.csv")
 vl_pars <- model_pars$values
 names(vl_pars) <- model_pars$names
@@ -61,39 +63,74 @@ vl_pars_both["viral_peak"] <- vl_pars_both["viral_peak"] - 5
 ## 1) SEIR SIMULATION
 ###############################################
 ## SEIR parameters
-pars <- c(sigma1.val = 0,#1/(45*7*2), ## Immune waning to strain 1
-          sigma2.val = 0,#1/(45*7*2), ## Immune waning to strain 2
-          nu.val = 1/3, ## Latent period
-          gamma.val = 1/7, ## Infectious period
-          chi12.val = 0.75, ## Cross immunity strain 1 confers against strain 2
-          chi21.val = 0.75, ## Cross immunity strain 2 confers against strain 1
-          #amplitude = 0, 
-          #baseline = 3, 
-          #phi.val = 0, 
-          beta.val1=1.5/7, ## Transmission rate of strain 1 (R0*gamma)
-          beta.val2=2.5/7, ## Transmission rate of strain 2 (R0*gamma)
-          kappa.val = 1/100000, ## Daily importation rate of infected individuals
-          importtime1 = 0, ## Time of importation of strain 1
-          importtime2 = 180, ## Time of importation of strain 2
-          importlength = 7) ## Duration of importations
+pars <- c(
+  dt=0.25,
+  S_ini=1e7,
+  
+  k_E = 2, ## Number of exposed compartment stages
+  k_I = 2, ## Number of infected compartment stages
+  sigma = 1/3, ## Latent period
+  gamma = 1/7, ## Infectious period
+  strain12_immunity = 0.75, ## Cross immunity strain 1 confers against strain 2
+  strain21_immunity = 1, ## Cross immunity strain 2 confers against strain 1
+  
+  beta1=1.5/7, ## Transmission rate in first period
+  beta2=1.5/7, ## Transmission rate in second period
+  beta3=1.5/7, ## Transmission rate in third period
+  beta4=1.5/7, ## Transmission rate in fourth period
+  
+  tdur1=1000,
+  tdur2=1000,
+  tdur3=1000,
+  tdur4=1000,
+  beta_transition_dur=7.25,
+  
+  strain1_trans=1,
+  strain2_trans=4/1.5,
+  strain12_trans=0.5,
+  strain21_trans=0.5,
+  
+  wane_rate=1e-05,
+  
+  importtime1=0,
+  importtime2=180,
+  seed_size1=100,
+  seed_size2=100,
+  seed_dur1=7,
+  seed_dur2=7
+  ) ## Duration of importations
 
-states <- c(S1S2 = 1,E1S2 = 0,S1E2 = 0,E1E2 = 0,I1S2 = 0, 
-            S1I2 = 0, R1S2 = 0,I1E2 = 0, E1I2 = 0, S1R2 = 0, 
-            R1E2 = 0, I1I2 = 0, E1R2 = 0, R1I2 = 0, I1R2 = 0, 
-            R1R2 = 0, inc1 = 0, inc2 = 0) # Initial conditions
+## R0
 
 times <- seq(0, 365*1.5,by=1) ## Run model for 1.5 years
 
-seir_dynamics <- run_2strain_seir_simulation(pars, states,times)
-virus1_inc <- seir_dynamics$virus1_inc
-virus2_inc <- seir_dynamics$virus2_inc
+## Change this to change the "sample at day 270" in figure 1 and beyond
+samp_time <- 235
+
+seir_dynamics <- run_2strain_seir_simulation(pars, states,times,model_ver="odin",
+                                             seir_filename="~/Documents/GitHub/variant_viral_loads/code/odin_files/odinseirstrains.R",
+                                             n_repeats=1000)
+seir_dynamics$p_inc + theme_bw() + geom_vline(xintercept=samp_time)
+virus1_inc <- seir_dynamics$virus1_inc/pars["S_ini"]
+virus2_inc <- seir_dynamics$virus2_inc/pars["S_ini"]
+
+
+virus1_inc_run <- seir_dynamics$virus1_inc_repeats %>% filter(run==1) %>% pull(inc)
+virus1_inc_run <- virus1_inc_run/pars["S_ini"]
+virus2_inc_run <- seir_dynamics$virus2_inc_repeats %>% filter(run==1) %>% pull(inc)
+virus2_inc_run <- virus2_inc_run/pars["S_ini"]
+
 virus_inc <- virus1_inc + virus2_inc
 
 gr1 <- tibble(t=times,gr=c(0,log(virus1_inc[2:length(virus1_inc)]/virus1_inc[1:(length(virus1_inc)-1)])),inc=virus1_inc,virus="Original variant")
-gr2 <- tibble(t=times,gr=c(0,log(virus2_inc[2:length(virus2_inc)]/virus2_inc[1:(length(virus2_inc)-1)])),inc=virus_inc2,virus="New variant, same kinetics")
-gr2_alt <- tibble(t=times,gr=c(0,log(virus2_inc[2:length(virus2_inc)]/virus2_inc[1:(length(virus2_inc)-1)])),inc=virus_inc2,virus="New variant, different kinetics")
+gr2 <- tibble(t=times,gr=c(0,log(virus2_inc[2:length(virus2_inc)]/virus2_inc[1:(length(virus2_inc)-1)])),inc=virus2_inc,virus="New variant, same kinetics")
+gr2_alt <- tibble(t=times,gr=c(0,log(virus2_inc[2:length(virus2_inc)]/virus2_inc[1:(length(virus2_inc)-1)])),inc=virus2_inc,virus="New variant, different kinetics")
 gr_overall <- tibble(t=times,gr=c(0,log(virus_inc[2:length(virus_inc)]/virus_inc[1:(length(virus_inc)-1)])),inc=virus_inc,virus="Overall")
 grs <- bind_rows(gr1, gr2,gr2_alt,gr_overall)
+
+grs <- grs %>% dplyr::arrange(virus,t) %>% group_by(virus) %>% 
+  mutate(gr=ifelse(is.infinite(gr),0,gr)) %>%
+  mutate(gr_rollmean7=zoo::rollmean(gr,k=7,fill=NA))
 
 ## Assume individuals can stay detectable for up to 35 days
 lastday <- 35
@@ -111,26 +148,51 @@ age_dist_comb <- calculate_infection_age_distribution(seir_dynamics$virus1_inc+s
 ###############################################
 ## FIGURE 1
 ###############################################
-## Change this to change the "sample at day 270" in figure 1 and beyond
-samp_time <- 270
 
 p_ct_model <- plot_simulated_ct_curve(vl_pars, ages, 100)
 p_ct_model_2 <- plot_simulated_ct_curve_2variants(vl_pars,vl_pars_both,ages,20)
 
-p_ct_compare1 <- p_sim_ct_compare_naive(vl_pars,vl_pars_both,virus1_inc,virus2_inc, ages,samp_time=samp_time,N=100)
-
+p_ct_compare1 <- p_sim_ct_compare_naive(vl_pars,vl_pars_both,virus1_inc_run,virus2_inc_run, ages,samp_time=samp_time,N=100)
+p_ct_compare1
 ## Using virosolver package, get predicted Ct distribution on each day of the simulation
-ct_dist_1 <- calculate_ct_distribution(vl_pars, ages, virus1_inc,times[times >= pars["importtime1"]+35]) %>% mutate(virus="Original variant")
-ct_dist_2 <- calculate_ct_distribution(vl_pars, ages, virus2_inc,times[times >= pars["importtime2"]+35]) %>% mutate(virus="New variant, same kinetics")
-ct_dist_2_alt <- calculate_ct_distribution(vl_pars_both, ages, virus2_inc,times[times >= pars["importtime2"]+35]) %>% mutate(virus="New variant, different kinetics")
-ct_dist_overall <- calculate_ct_distribution(vl_pars, ages, virus_inc,times[times >= pars["importtime1"]+35]) %>% mutate(virus="Overall")
+ct_dist_1 <- calculate_ct_distribution(vl_pars, ages, virus1_inc,times[times >= pars["importtime1"]+7]) %>% mutate(virus="Original variant")
+ct_dist_2 <- calculate_ct_distribution(vl_pars, ages, virus2_inc,times[times >= pars["importtime2"]+7]) %>% mutate(virus="New variant, same kinetics")
+ct_dist_2_alt <- calculate_ct_distribution(vl_pars_both, ages, virus2_inc,times[times >= pars["importtime2"]+7]) %>% mutate(virus="New variant, different kinetics")
+ct_dist_overall <- calculate_ct_distribution(vl_pars, ages, virus_inc,times[times >= pars["importtime1"]+7]) %>% mutate(virus="Overall")
 ct_combined_summaries <- bind_rows(ct_dist_1,ct_dist_2,ct_dist_overall,ct_dist_2_alt)
 ct_combined_summaries <- ct_combined_summaries %>% left_join(grs) %>% ungroup()
 
 p1 <- plot_medians_and_skew(ct_combined_summaries)
 
-p_LHS <- (seir_dynamics$p_inc + labs(tag="A")+ variant_color_scale_fig1)/
-  (p1[[1]] + labs(tag="C") + geom_vline(xintercept=samp_time,linetype="dotted",col="grey40",size=0.75) + 
+
+dat_inc_for_plot <- seir_dynamics$seir_res %>% filter(compartment == "obs_inc") %>% 
+  mutate(strain=ifelse(strain %in% c("New variant","Reinfection (original->new)"),"New variant","Original variant")) %>%
+  group_by(strain, time) %>% summarize(y=mean(y)) %>% select(strain, time, y)
+dat_inc_for_plot <- dat_inc_for_plot %>% bind_rows(dat_inc_for_plot %>% group_by(time) %>% summarize(y = sum(y)) %>% mutate(strain="Overall"))
+dat_inc_for_plot$strain <- factor(dat_inc_for_plot$strain, levels=c("Overall","Original variant","New variant"))
+p_inc <- ggplot(dat_inc_for_plot) + 
+  geom_line(aes(x=time,y=y/pars["S_ini"],col=strain))+
+  geom_vline(xintercept=c(180),linetype="dashed",col="#D55E00") +
+  geom_vline(xintercept=c(0),linetype="dashed",col="#0072B2") +
+  variant_color_scale +
+  xlab("Time") +
+  scale_x_continuous(limits=c(0,max(times)),breaks=seq(0,550,by=50)) +
+  scale_y_continuous(breaks=seq(0,0.008,by=0.002))+
+  #scale_y_continuous(expand=c(0,0)) +
+  ylab("Per capita incidence") +
+  theme_overall + 
+  theme(legend.position=c(0.8,0.8)) +
+  theme_nice_axes+ theme_no_x_axis + labs(tag="A")+ variant_color_scale_fig1 + 
+  scale_x_continuous(limits=c(0,425))
+
+
+p_LHS <- p_inc /
+  (p1[[1]] + 
+     scale_x_continuous(limits=c(0,425),breaks=seq(0,425,by=50))+ 
+     scale_y_continuous(breaks=seq(26,37,by=1)) +
+     coord_cartesian(ylim=c(36,26)) +
+     labs(tag="C") + 
+     geom_vline(xintercept=samp_time,linetype="dotted",col="grey40",size=0.75) + 
      scale_y_continuous(trans="reverse"))
 p_RHS <- (p_ct_model_2 + labs(tag="B"))/
   (p_ct_compare1 + labs(tag="D"))
@@ -142,13 +204,13 @@ ggsave(fig1,filename = "figures/fig1.png",height=5,width=8,dpi=300,units="in")
 ###############################################
 ## FIGURE 2
 ###############################################
-gr_tests <- c(0.03,-0.02)
-p_aligned <- plot_growth_rate_lineups(ct_combined_summaries)
+gr_tests <- c(0.03,-0.03)
+p_aligned <- plot_growth_rate_lineups(ct_combined_summaries %>% mutate(gr=gr_rollmean7) %>% filter(inc > 1e-6, gr > -0.05, gr < 0.05))
 p_aligned_median <- p_aligned[[1]] + geom_vline(xintercept=gr_tests,linetype="dotted",col="grey40",size=0.75)
-set.seed(2)
-p_ct_samp_gr1 <- p_sim_ct_compare_growth(vl_pars,vl_pars_both,virus1_inc,virus2_inc, ages,combined_summaries,gr_tests[1],N=100,dotsize=1)
-set.seed(7)
-p_ct_samp_gr2 <- p_sim_ct_compare_growth(vl_pars,vl_pars_both,virus1_inc,virus2_inc, ages,combined_summaries,gr_tests[2],N=100,dotsize=1)
+p_ct_samp_gr1 <- p_sim_ct_compare_growth(vl_pars,vl_pars_both,virus1_inc_run,virus2_inc_run, 
+                                         ages,ct_combined_summaries,gr_tests[1],N=100,dotsize=1)
+p_ct_samp_gr2 <- p_sim_ct_compare_growth(vl_pars,vl_pars_both,virus1_inc_run,virus2_inc_run, 
+                                         ages,ct_combined_summaries,gr_tests[2],N=100,dotsize=1)
 
 fig2 <- (p_aligned_median+ theme(legend.position=c(0.85,0.85)) + labs(tag="A")) / 
            (p_ct_samp_gr1+ labs(tag="B"))  / 
@@ -160,17 +222,20 @@ ggsave(fig2,filename = "figures/fig2.png",height=7,width=5,dpi=300,units="in")
 ###############################################
 ## POWER CALCULATION FOR RANDOM CROSS-SECTIONS
 ###############################################
-samp_time <- 270
+samp_time <- 235
 samp_sizes <- c(25,50,100,250,500)
-N_trials <- 1000
+N_trials <- 100
 
-power_pop_all <- p_sim_ct_compare_power(vl_pars,vl_pars_both,virus1_inc,virus2_inc, ages,samp_time=samp_time,trials=N_trials,samp_sizes=samp_sizes)
+power_pop_all <- p_sim_ct_compare_power(vl_pars,vl_pars_both,seir_dynamics$virus1_inc_repeats,seir_dynamics$virus2_inc_repeats, 
+                                        ages,samp_time=samp_time,trials=N_trials,samp_sizes=samp_sizes)
 
 ## Same again but aligned by growth rate
-power_pop_gr_up <- p_sim_ct_compare_power(vl_pars,vl_pars_both,virus1_inc,virus2_inc, ages,samp_time=samp_time,trials=N_trials,samp_sizes=samp_sizes,
+power_pop_gr_up <- p_sim_ct_compare_power(vl_pars,vl_pars_both,seir_dynamics$virus1_inc_repeats,seir_dynamics$virus2_inc_repeats, 
+                                          ages,samp_time=samp_time,trials=N_trials,samp_sizes=samp_sizes,
                                    align_gr=TRUE,grs=grs,gr_test=0.03)
-power_pop_gr_down <- p_sim_ct_compare_power(vl_pars,vl_pars_both,virus1_inc,virus2_inc, ages,samp_time=samp_time,trials=N_trials,samp_sizes=samp_sizes,
-                                        align_gr=TRUE,grs=grs,gr_test=-0.02)
+power_pop_gr_down <- p_sim_ct_compare_power(vl_pars,vl_pars_both,seir_dynamics$virus1_inc_repeats,seir_dynamics$virus2_inc_repeats, 
+                                            ages,samp_time=samp_time,trials=N_trials,samp_sizes=samp_sizes,
+                                        align_gr=TRUE,grs=grs,gr_test=-0.03)
 ggsave(filename="figures/figS1.png",power_pop_all[[3]],height=8,width=6,units="in",dpi=300)
 ggsave(filename="figures/figS2.png",power_pop_gr_up[[3]],height=8,width=6,units="in",dpi=300)
 ggsave(filename="figures/figS3.png",power_pop_gr_down[[3]],height=8,width=6,units="in",dpi=300)
@@ -180,17 +245,17 @@ ggsave(filename="figures/figS3.png",power_pop_gr_down[[3]],height=8,width=6,unit
 ## Symptomatic reporting population dataset
 ###############################################
 ## Using virosolver package, get predicted Ct distribution on each day of the simulation
-ct_dist_1_symptomatic <- calculate_ct_distribution(vl_pars, ages, virus1_inc,times[times >= pars["importtime1"]+35],symptom_surveillance = TRUE) %>% mutate(virus="Original variant")
-ct_dist_2_symptomatic <- calculate_ct_distribution(vl_pars, ages, virus2_inc,times[times >= pars["importtime2"]+35],symptom_surveillance = TRUE) %>% mutate(virus="New variant, same kinetics")
-ct_dist_2_alt_symptomatic <- calculate_ct_distribution(vl_pars_both, ages, virus2_inc,times[times >= pars["importtime2"]+35],symptom_surveillance = TRUE) %>% mutate(virus="New variant, different kinetics")
-ct_dist_overall_symptomatic <- calculate_ct_distribution(vl_pars, ages, virus_inc,times[times >= pars["importtime1"]+35],symptom_surveillance = TRUE) %>% mutate(virus="Overall")
+ct_dist_1_symptomatic <- calculate_ct_distribution(vl_pars, ages, virus1_inc,times[times >= pars["importtime1"]+7],symptom_surveillance = TRUE) %>% mutate(virus="Original variant")
+ct_dist_2_symptomatic <- calculate_ct_distribution(vl_pars, ages, virus2_inc,times[times >= pars["importtime2"]+7],symptom_surveillance = TRUE) %>% mutate(virus="New variant, same kinetics")
+ct_dist_2_alt_symptomatic <- calculate_ct_distribution(vl_pars_both, ages, virus2_inc,times[times >= pars["importtime2"]+7],symptom_surveillance = TRUE) %>% mutate(virus="New variant, different kinetics")
+ct_dist_overall_symptomatic <- calculate_ct_distribution(vl_pars, ages, virus_inc,times[times >= pars["importtime1"]+7],symptom_surveillance = TRUE) %>% mutate(virus="Overall")
 ct_combined_summaries_symptomatic <- bind_rows(ct_dist_1_symptomatic,ct_dist_2_symptomatic,ct_dist_overall_symptomatic,ct_dist_2_alt_symptomatic)
 ct_combined_summaries_symptomatic <- ct_combined_summaries_symptomatic %>% left_join(grs) %>% ungroup()
 
-p1_symptomatic <- plot_medians_and_skew(ct_combined_summaries_symptomatic)
+p1_symptomatic <- plot_medians_and_skew(ct_combined_summaries_symptomatic %>% filter(inc > 1e-6))
 
 ## Plot Ct values over time since infection
-p_sympt_ct_kinetics_pop <- plot_simulated_ct_curve_2variants_symptomatic(vl_pars,vl_pars_both, N=1000,xmax=20)
+p_sympt_ct_kinetics_pop <- plot_simulated_ct_curve_2variants_symptomatic(vl_pars,vl_pars_both, N=1000,xmax=15)
 p_sympt_ct_kinetics_pop <- p_sympt_ct_kinetics_pop + labs(tag="A")
 
 p_symptom_compare <- p1_symptomatic[[1]] + 
@@ -200,7 +265,7 @@ p_symptom_compare <- p1_symptomatic[[1]] +
   labs(tag="B")
 
 ## Plot Ct values over entire epidemic
-p_onset_dist <- plot_time_since_infection(270,vl_pars,vl_pars_both,virus1_inc,virus2_inc)  + labs(tag="C")
+p_onset_dist <- plot_time_since_infection(samp_time,vl_pars,vl_pars_both,virus1_inc,virus2_inc)  + labs(tag="C")
 
 ## Single trial of drawing Ct values and comparing them
 p_ct_compare_symp <- p_sim_ct_compare_naive(vl_pars,vl_pars_both,virus1_inc,virus2_inc, ages,samp_time=samp_time,N=100,symptom_surveillance = TRUE) + labs(tag="D")
@@ -213,12 +278,14 @@ ggsave(filename="figures/fig3.pdf",fig3,height=6,width=8)
 
 ## Similar simulation, but using a re-weighted incidence curve around the sample time to ensure that we have plenty of Ct values
 ## to resample from. Using the above version of the simulation generates too few Ct values to be reliable.
-ct_dist_symptomatic_window <- simulate_popn_cts_symptomatic(virus1_inc[(samp_time-30):(samp_time+10)]/sum(virus1_inc[(samp_time-30):(samp_time+10)]), 
-                                                     virus2_inc[(samp_time-30):(samp_time+10)]/sum(virus2_inc[(samp_time-30):(samp_time+10)]), 
-                                                     vl_pars, vl_pars_both,
-                                                     1000000, times[(samp_time-30):(samp_time+10)],
-                                                     confirm_delay_par1_v1=5, confirm_delay_par2_v1=1,
-                                                     confirm_delay_par1_v2=5, confirm_delay_par2_v2 = 1)
+ct_dist_symptomatic_window <- simulate_popn_cts_symptomatic_repeats(virus1_inc_repeats, 
+                                                                    virus2_inc_repeats,
+                                                                    samp_time, 30, 10,
+                                                                    vl_pars, vl_pars_both,
+                                                                    pars["S_ini"], 
+                                                                    confirm_delay_par1_v1=5, confirm_delay_par2_v1 = 1,
+                                                                    confirm_delay_par1_v2=5, confirm_delay_par2_v2 = 1)
+
 ct_dist_symptomatic_window_dat <- ct_dist_symptomatic_window$ct_dat_sympt
 ct_dist_symptomatic_window_dat <- ct_dist_symptomatic_window_dat %>% mutate(days_since_onset = sampled_time - onset_time)
 ct_dist_symptomatic_window_dat <- ct_dist_symptomatic_window_dat%>% dplyr::select(-ct) %>% rename(ct=ct_obs)

@@ -108,19 +108,46 @@ simulate_cross_section <- function(pars, ages, incidence, obs_time,N=1000, use_p
 }
 
 
-simulate_m_cross_sections <- function(pars, ages, incidence, obs_time,N=1000, m=10, use_pos=TRUE, symptom_surveillance=FALSE){
+simulate_m_cross_sections <- function(pars, ages, incidence, obs_time,N=1000, m=10, use_pos=TRUE, symptom_surveillance=FALSE,align_gr=FALSE,grs=NULL,gr_test=NULL,virus_tmp=NULL){
   ## Use virosolver to get the expected Ct distribution
-  ct_distribution <- pred_dist_wrapper(seq(0,40,by=0.01),obs_times = obs_time,ages,pars,incidence,symptom_surveillance)
-  ## Re-scale 
-  if(use_pos){
-    ct_distribution <- ct_distribution %>% filter(ct < 40)
+  if(is.null(dim(incidence))) {
+    ct_distribution <- pred_dist_wrapper(seq(0,40,by=0.01),obs_times = obs_time,ages,pars,incidence,symptom_surveillance)
+    ## Re-scale 
+    if(use_pos){
+      ct_distribution <- ct_distribution %>% filter(ct < 40)
+    }
+    
+    ct_scaled_dist <- ct_distribution %>% group_by(t) %>% mutate(density_scaled=density/sum(density)) %>%  mutate(cumu_density=cumsum(density_scaled)) 
   }
-  
-  ct_scaled_dist <- ct_distribution %>% group_by(t) %>% mutate(density_scaled=density/sum(density)) %>%  mutate(cumu_density=cumsum(density_scaled)) 
   
   ## Sample from distribution m times and combine
   cts <- list()
   for(j in 1:m){
+    if(!is.null(dim(incidence))) {
+      run_no <- sample(unique(incidence$run),1)
+      if(align_gr){
+        samp_times <- grs %>% 
+          filter(inc > 0.0001) %>%
+          group_by(virus) %>% 
+          mutate(gr_diff=abs(gr - gr_test)) %>% 
+          filter(gr_diff==min(gr_diff,na.rm=TRUE),
+                 virus==virus_tmp)
+        #print(samp_times)
+        obs_time <- samp_times %>% pull(t)
+      } 
+      
+      incidence_tmp <- incidence %>% dplyr::filter(run == run_no) %>% pull(inc)
+      
+      ct_distribution <- pred_dist_wrapper(seq(0,40,by=0.01),obs_times = obs_time,ages,pars,incidence_tmp,symptom_surveillance)
+      ## Re-scale 
+      if(use_pos){
+        ct_distribution <- ct_distribution %>% filter(ct < 40)
+      }
+      
+      ct_scaled_dist <- ct_distribution %>% group_by(t) %>% mutate(density_scaled=density/sum(density)) %>%  mutate(cumu_density=cumsum(density_scaled)) 
+    } 
+    
+    
     cts[[j]] <- tibble(ct=sample(ct_scaled_dist$ct,size=N,replace=TRUE,prob=ct_scaled_dist$density_scaled),sampno=j,obs_time=obs_time)
   }
   cts <- do.call("bind_rows",cts)
@@ -272,20 +299,16 @@ create_posterior_func_compare <- function(parTab,
   data_use <- data
   undetectable_counts <- NULL
   if("intercept" %in% par_names){
-    for(variant1 in variants){
-      undetectable_tally <- data_use %>%
-        filter(ct >= pars["intercept"],
-               variant==variant1) %>%
-        group_by(t) %>%
-        tally()
-      no_undetectable_times <- setdiff(obs_times, unique(undetectable_tally$t))
-      no_undetectable_tally <- tibble(t=no_undetectable_times,n=0)
-      undetectable_tally <- bind_rows(undetectable_tally, no_undetectable_tally) %>% arrange(t)
-      undetectable_counts[[variant1]] <- undetectable_tally$n
-    }
+    undetectable_tally <- data_use %>%
+      filter(ct >= pars["intercept"]) %>%
+      group_by(t) %>%
+      tally()
+    no_undetectable_times <- setdiff(obs_times, unique(undetectable_tally$t))
+    no_undetectable_tally <- tibble(t=no_undetectable_times,n=0)
+    undetectable_tally <- bind_rows(undetectable_tally, no_undetectable_tally) %>% arrange(t)
+    undetectable_counts <- undetectable_tally$n
     data_use <- data_use %>% filter(ct < pars["intercept"])
   }
-  
   
   ## Pull out data into a list for quicker indexing later on
   data_list <- NULL
@@ -301,6 +324,9 @@ create_posterior_func_compare <- function(parTab,
     ## For each variant
     lik <- 0
     preds <- NULL
+    pars_list <- NULL
+    prob_infection_list <- NULL
+    
     for(variant1 in variants){
       pars_tmp <- pars
       names(pars_tmp) <- par_names
@@ -308,7 +334,11 @@ create_posterior_func_compare <- function(parTab,
         ## Growth rate pars
         #pars_tmp["beta"] <- pars_tmp["beta"]*pars_tmp["beta_scale"]
         pars_tmp["beta"] <- pars_tmp["beta_alt"]
-        pars_tmp["overall_prob"] <- pars_tmp["overall_prob"]*pars_tmp["overall_prob_scale"]
+        pars_tmp["overall_prob"] <- pars_tmp["overall_prob_scale"]
+        
+        if("prob" %in% par_names){
+          pars_tmp[which(par_names == "prob")] <- pars_tmp[which(par_names == "prob_alt")]
+        }
         
         ## Viral load control points
         pars_tmp["viral_peak"] <- pars_tmp["viral_peak"]*pars_tmp["viral_peak_scale"]
@@ -328,10 +358,14 @@ create_posterior_func_compare <- function(parTab,
         
       }
       prob_infection_tmp <- INCIDENCE_FUNC(pars_tmp, times)
+      
+      pars_list[[variant1]] <- pars_tmp
+      prob_infection_list[[variant1]] <- prob_infection_tmp
+      
       if(solve_ver == "likelihood"){
         if(solve_likelihood){
           lik <- lik + sum(likelihood_cpp_wrapper(data_list[[variant1]], ages, obs_times,pars_tmp, prob_infection_tmp,
-                                                  use_pos,undetectable_counts[[variant1]]))
+                                                  use_pos,0))
         }
         
         if(!is.null(PRIOR_FUNC)){
@@ -343,12 +377,64 @@ create_posterior_func_compare <- function(parTab,
       }
     }
     if(solve_ver == "likelihood"){
-      return(lik) 
+      ## Now solve undetectable likelihood
+      if(!use_pos){
+        lik <- lik + likelihood_undetectable_2variants(undetectable_counts, variants,obs_times, ages,
+                                                       pars_list, prob_infection_list)
+      }
+    return(lik) 
     } else {
       return(preds)
     }
     f
   }
+}
+
+likelihood_undetectable_2variants <- function(undetectable_counts, variants,times, ages, pars_list, 
+                                              prob_infection_list){
+  liks <- 0
+  for(i in seq_along(times)){
+    n_obs <- undetectable_counts[i]
+    p_undetectables <- numeric(length(variants))
+    
+    for(j in seq_along(variants)){
+      variant1 <- variants[[j]]
+      pars_tmp <- pars_list[[j]]
+      prob_infection_tmp <- prob_infection_list[[j]]
+
+      ## Because we have a different standard deviation for different times
+      ## Time at which standard deviation is reduced
+      t_switch <-  pars_tmp["t_switch"] + pars_tmp["desired_mode"] + pars_tmp["tshift"]
+      sd_mod <- rep(pars_tmp["sd_mod"], max(ages))
+      
+      ## Prior to t_switch, full standard deviation
+      ## Make sure we don't go past maximum of ages vector
+      unmod_vec <- 1:min(t_switch,max(ages)+1)
+      sd_mod[unmod_vec] <- 1
+      
+      ## For the next sd_mod_wane days, decrease linearly
+      decrease_vec <- (t_switch+1):(t_switch+pars_tmp["sd_mod_wane"])
+      ## The rest are at sd_mod
+      sd_mod[decrease_vec] <- 1 - ((1-pars_tmp["sd_mod"])/pars_tmp["sd_mod_wane"])*seq_len(pars_tmp["sd_mod_wane"])
+      
+      ## Only solve back until the earliest possible infection time
+      ages1 <- ages[(times[i] - ages) > 0]
+      sd_mod1 <- sd_mod[(times[i] - ages) > 0]
+      
+      ## Find the log probability of being undetectable from infection with this strain,
+      ## exponential and subtract from 1 to give the probability of being detectable and
+      ## infected with this variant
+      p_undetectables[j] <-  1-exp(likelihood_cpp(pars_tmp["intercept"], times[i], ages1,
+                                                  pars_tmp, prob_infection_tmp,
+                                          sd_mod))
+    }
+    ## Find the probability of not being detectable and infected with any variant
+    p_undetectable <- 1 - sum(p_undetectables)
+    
+    ## Log and multiply to get log probability
+    liks <- liks + n_obs*log(p_undetectable)
+  }
+  liks
 }
 
 

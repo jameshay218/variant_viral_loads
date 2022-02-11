@@ -207,15 +207,38 @@ simulate_viral_loads_wrapper <- function(linelist,
   sd_mod[unmod_vec] <- 1
   decrease_vec <- (t_switch+1):(t_switch+kinetics_pars["sd_mod_wane"])
   sd_mod[decrease_vec] <- 1 - ((1-kinetics_pars["sd_mod"])/kinetics_pars["sd_mod_wane"])*seq_len(kinetics_pars["sd_mod_wane"])
-  vl_dat <- linelist %>% 
-    ## Fix infection time for uninfected individuals
-    mutate(infection_time = ifelse(is.na(infection_time),-100, infection_time)) %>%
-    group_by(i) %>% 
+  
+  ## Fix infection time for uninfected individuals
+  linelist <- linelist %>% 
+    mutate(infection_time = ifelse(is.na(infection_time),-100, infection_time))
+  
+  ## Draw random end of detectability
+  linelist$last_detectable_day <- linelist$infection_time + rnbinom(nrow(linelist),1,
+                            prob=kinetics_pars["prob_detect"]) + 
+    kinetics_pars["tshift"] + kinetics_pars["desired_mode"] + kinetics_pars["t_switch"]
+
     ## Pre-compute loss of detectability
-    mutate(last_detectable_day = infection_time + ## From infection time
-             rnbinom(n(), 1, prob=kinetics_pars["prob_detect"]) + ## How long until full clearance?
-             kinetics_pars["tshift"] + kinetics_pars["desired_mode"] + kinetics_pars["t_switch"]) %>% ## With correct shift
-    mutate(ct=virosolver::viral_load_func(kinetics_pars, sampled_time, FALSE, infection_time)) %>%
+#    mutate(last_detectable_day = infection_time + ## From infection time
+#             rnbinom(n(), 1, prob=kinetics_pars["prob_detect"]) + ## How long until full clearance?
+#             kinetics_pars["tshift"] + kinetics_pars["desired_mode"] + kinetics_pars["t_switch"]) 
+  wane_rate = (kinetics_pars["viral_peak"] - kinetics_pars["level_switch"])/kinetics_pars["t_switch"];
+  wane_rate2 = (kinetics_pars["level_switch"] - kinetics_pars["intercept"])/kinetics_pars["wane_rate2"];
+  growth_rate = (kinetics_pars["viral_peak"] - kinetics_pars["true_0"])/kinetics_pars["desired_mode"];
+  
+  
+  cts <- numeric(nrow(linelist))
+  cts1 <- numeric(nrow(linelist))
+  for(i in 1:nrow(linelist)){
+    cts[i] <- virosolver::viral_load_func_single_cpp(kinetics_pars["tshift"], kinetics_pars["desired_mode"],kinetics_pars["t_switch"],
+                                             kinetics_pars["viral_peak"],kinetics_pars["obs_sd"],kinetics_pars["level_switch"],
+                                             kinetics_pars["true_0"],kinetics_pars["intercept"],kinetics_pars["LOD"],wane_rate,
+                                             wane_rate2,growth_rate,linelist$sampled_time[i]-linelist$infection_time[i],FALSE)
+    #cts1[i] <- virosolver::viral_load_func(kinetics_pars, linelist$sampled_time[i], FALSE, linelist$infection_time[i])
+  }
+  linelist$ct <- cts
+  linelist <- linelist %>% ## With correct shift
+    ungroup() %>%
+    #mutate(ct=virosolver::viral_load_func(kinetics_pars, sampled_time, FALSE, infection_time))  %>%
     ## If sampled after loss of detectability or not infected, then undetectable
     mutate(ct = ifelse(sampled_time > last_detectable_day, 1000, ct),
            ct = ifelse(is_infected == 0, 1000, ct),
@@ -223,11 +246,12 @@ simulate_viral_loads_wrapper <- function(linelist,
     ## Convert to viral load value and add noise to Ct
     mutate(vl = ((kinetics_pars["intercept"]-ct)/log2(10)) + kinetics_pars["LOD"],
            days_since_infection = pmax(sampled_time - infection_time,-1),
-           sd_used = ifelse(days_since_infection > 0, kinetics_pars["obs_sd"]*sd_mod[days_since_infection],kinetics_pars["obs_sd"]),
-           ct_obs_sim = extraDistr::rgumbel(n(), ct, sd_used)) %>%
+           sd_used = ifelse(days_since_infection > 0, kinetics_pars["obs_sd"]*sd_mod[days_since_infection],kinetics_pars["obs_sd"]))
+  
+  linelist$ct_obs_sim <- extraDistr::rgumbel(nrow(linelist), linelist$ct, linelist$sd_used)
+           #ct_obs_sim = extraDistr::rgumbel(n(), ct, sd_used)) %>%
     ## Convert <LOD to LOD
-    mutate(ct_obs = pmin(ct_obs_sim, kinetics_pars["intercept"])) %>%
-    ungroup() %>%
+   vl_dat <- linelist %>% mutate(ct_obs = pmin(ct_obs_sim, kinetics_pars["intercept"])) %>%
     mutate(infection_time = ifelse(infection_time < 0, NA, infection_time))
   return(viral_loads=vl_dat)
 }

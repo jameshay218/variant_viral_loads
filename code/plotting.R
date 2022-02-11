@@ -13,11 +13,35 @@ color_key <- c("Overall"="black",
                "New variant, different kinetics"="#D55E00",
                "Difference"="gray40")
 
+color_key_short <- c("Overall"="black",
+               "Original variant"="#0072B2",
+               "New variant, same kinetics"="#009E73",
+               "New variant, different kinetics"="#D55E00")
+
+color_key_stochastic <- c("Original variant"="#0072B2",
+               "New variant"="#D55E00",
+               "Reinfection (original->new)"="#D55E00",
+               "Reinfection (new->original)"="#0072B2")
+color_key_stochastic_alt <- c("Original variant"="#0072B2",
+                          "New variant"="#D55E00",
+                          "Overall"="black")
+
+
+linetype_key_stochastic <- c("Original variant"="solid",
+                                "New variant"="solid",
+                                "Reinfection (original->new)"="dashed",
+                                "Reinfection (new->original)"="dashed")
+
 linetype_key <- c("Original variant"="solid",
                   "New variant, different kinetics"="solid",
                   "New variant"="solid",
                   "New variant, same kinetics"="solid",
                   "Overall"="dashed")
+linetype_key_short <- c("Overall"="dashed",
+  "Original variant"="solid",
+  "New variant, same kinetics"="solid",
+                  "New variant, different kinetics"="solid"
+                  )
   
 size_key <- c("Original variant"=0.5,
               "New variant, different kinetics"=0.75,
@@ -26,6 +50,9 @@ size_key <- c("Original variant"=0.5,
               "Overall"=0.5)
 
 variant_color_scale <- scale_color_manual(name="Variant",values=color_key,drop=TRUE) 
+variant_color_scale_short <- scale_color_manual(name="Variant",values=color_key_short,drop=TRUE) 
+variant_color_scale_stochastic <- scale_color_manual(name="Variant",values=color_key_stochastic,drop=TRUE) 
+variant_color_scale_stochastic_alt <- scale_color_manual(name="Variant",values=color_key_stochastic_alt,drop=TRUE) 
 variant_fill_scale <- scale_fill_manual(name="Variant",values=color_key,drop=TRUE) 
 
 variant_color_scale_fig1 <- scale_color_manual(name="Variant",values=color_key[c("Original variant","New variant","Overall")],drop=TRUE) 
@@ -36,6 +63,8 @@ variant_fill_scale_min <- scale_fill_manual(name="Variant",values=color_key[c("O
 variant_fill_scale_fig2 <- scale_fill_manual(name="Variant",drop=TRUE,values=color_key[c("Original variant","New variant, same kinetics","New variant, different kinetics")]) 
 
 variant_linetype_scale <- scale_linetype_manual(name="Variant",values=linetype_key,drop=TRUE)
+variant_linetype_scale_short <- scale_linetype_manual(name="Variant",values=linetype_key_short,drop=TRUE)
+variant_linetype_scale_stochastic <- scale_linetype_manual(name="Variant",values=linetype_key_stochastic,drop=TRUE)
 variant_size_scale <- scale_size_manual(name="Variant",values=size_key,drop=TRUE)
 
 variant_linetype_scale_fig2 <- scale_linetype_manual(name="Variant",drop=TRUE,values=linetype_key[c("Original variant","New variant, same kinetics","New variant, different kinetics")])
@@ -54,9 +83,10 @@ comparison_linetype_scale <- scale_linetype_manual(name="Comparison",drop=TRUE,
                                                       "V2-V2,\ndifferent kinetics"="solid"))
 
 plot_medians_and_skew <- function(combined_summaries){
+  combined_summaries$virus <- as.character(combined_summaries$virus)
   p_medians <- ggplot(combined_summaries) + 
     geom_line(aes(x=t,y=median,col=virus,linetype=virus),size=0.75) +
-    variant_color_scale + variant_fill_scale + variant_linetype_scale + 
+    variant_color_scale_short + variant_linetype_scale_short + 
     scale_y_continuous(trans="reverse") +
     scale_x_continuous(limits=c(0,max(times)),breaks=seq(0,550,by=50)) +
     ylab("Median Ct") +
@@ -66,7 +96,7 @@ plot_medians_and_skew <- function(combined_summaries){
   
   p_skews <- ggplot(combined_summaries) + 
     geom_line(aes(x=t,y=skewness,col=virus,linetype=virus),size=0.75)+
-    variant_color_scale + variant_fill_scale + variant_linetype_scale + 
+    variant_color_scale_short + variant_linetype_scale_short + 
     scale_x_continuous(limits=c(0,max(times)),breaks=seq(0,550,by=50)) +
     ylab("Skewness of Cts") +
     theme_overall +
@@ -157,7 +187,7 @@ plot_indiv_simulated_ct_curve <- function(ct_values,ages=1:35,N=1000){
     filter(days_since_infection %in% ages) %>%
     filter(ct < 40) %>%
     group_by(days_since_infection,virus) %>% 
-    summarize(median_ct=median(ct),mean_ct=mean(ct),mode_ct=calc_mode(ct))
+    dplyr::summarize(median_ct=median(ct),mean_ct=mean(ct),mode_ct=calc_mode(ct))
   
   ct_values_tmp <- ct_values %>% 
     filter(days_since_infection %in% ages) %>%
@@ -286,7 +316,7 @@ p_sim_ct_compare_naive <- function(vl_pars1,vl_pars2,virus1_inc,virus2_inc, ages
   p_ct_samp <- ggplot(cts_sim_comb) + 
     geom_violin(aes(x=virus,y=ct,fill=virus),alpha=0.1,trim=FALSE,col=NA,width=0.75) +
     geom_dotplot(aes(x=virus,y=ct,fill=virus),binaxis="y",stackdir="center",binwidth=1,dotsize=dotsize) + 
-    geom_errorbar(data=cts_sim_comb%>%group_by(virus)%>%summarize(median_ct=median(ct)),
+    geom_errorbar(data=cts_sim_comb%>%group_by(virus)%>%dplyr::summarize(median_ct=median(ct)),
                   aes(y=median_ct,ymin=median_ct,ymax=median_ct,x=virus),size=0.5,col="grey10") +
     geom_segment(data=pval_lines,aes(x=x,xend=xend,y=y,yend=yend),size=0.5) +
     geom_text(data=pval_labels,aes(x=x,y=y,label=label),size=2) +
@@ -302,11 +332,11 @@ p_sim_ct_compare_naive <- function(vl_pars1,vl_pars2,virus1_inc,virus2_inc, ages
 }
 
 
-p_sim_ct_compare_growth <- function(vl_pars1,vl_pars2,virus1_inc,virus2_inc, ages,combined_summaries,growth_rate_samp,N=100,dotsize=1,symptom_surveillance=FALSE) {
+p_sim_ct_compare_growth <- function(vl_pars1,vl_pars2,virus1_inc,virus2_inc, ages,ct_combined_summaries,growth_rate_samp,N=100,dotsize=1,symptom_surveillance=FALSE) {
   samp_times <- ct_combined_summaries %>% 
     group_by(virus) %>% 
     mutate(gr_diff=abs(gr - growth_rate_samp)) %>% 
-    filter(gr_diff==min(gr_diff))
+    filter(gr_diff==min(gr_diff,na.rm=TRUE))
   
   samp_time1 <- samp_times %>% filter(virus == "Original variant") %>% pull(t)
   samp_time2 <- samp_times %>% filter(virus == "New variant, same kinetics") %>% pull(t)
@@ -328,7 +358,7 @@ p_sim_ct_compare_growth <- function(vl_pars1,vl_pars2,virus1_inc,virus2_inc, age
   p_ct_samp <- ggplot(cts_sim_comb) + 
     geom_violin(aes(x=virus,y=ct,fill=virus),alpha=0.1,trim=FALSE,col=NA,width=0.5) +
     geom_dotplot(aes(x=virus,y=ct,fill=virus),binaxis="y",stackdir="center",binwidth=1,dotsize=dotsize) + 
-    geom_errorbar(data=cts_sim_comb%>%group_by(virus)%>%summarize(median_ct=median(ct)),
+    geom_errorbar(data=cts_sim_comb%>%group_by(virus)%>%dplyr::summarize(median_ct=median(ct)),
                   aes(y=median_ct,ymin=median_ct,ymax=median_ct,x=virus),size=0.5,col="grey10") +
     geom_segment(data=pval_lines,aes(x=x,xend=xend,y=y,yend=yend),size=0.5) +
     geom_text(data=pval_labels,aes(x=x,y=y,label=label),size=2) +
@@ -389,7 +419,7 @@ internal_plot_power_compare_power_symp <- function(all_results, all_results_summ
     xlab("Sample size") +
     theme_overall + 
     theme_nice_axes +
-    theme(legend.position=c(0.4,0.8)) +
+    theme(legend.position=c(0.8,0.4)) +
     scale_x_continuous(labels=samp_sizes,breaks=seq_along(samp_sizes)) +
     labs(tag="C")
   
@@ -402,11 +432,15 @@ p_sim_ct_compare_power <- function(vl_pars1,vl_pars2,virus1_inc,virus2_inc,
                                    ages,samp_time,trials=100,samp_sizes=100,
                                    alpha=0.05,
                                    align_gr=FALSE,grs=NULL,gr_test=NULL) {
-  if(align_gr){
+
+  if(is.null(dim(virus1_inc)) & align_gr){
     samp_times <- grs %>% 
+      filter(inc > 0.0001) %>%
       group_by(virus) %>% 
-      mutate(gr_diff=abs(gr - gr_test)) %>% 
+      mutate(gr_diff=abs(gr_rollmean7 - gr_test)) %>% 
       filter(gr_diff==min(gr_diff,na.rm=TRUE))
+    
+    print(samp_times)
     
     samp_time1 <- samp_times %>% filter(virus == "Original variant") %>% pull(t)
     samp_time2 <- samp_times %>% filter(virus == "New variant, same kinetics") %>% pull(t)
@@ -419,9 +453,15 @@ p_sim_ct_compare_power <- function(vl_pars1,vl_pars2,virus1_inc,virus2_inc,
   for(i in seq_along(samp_sizes)){
     N <- samp_sizes[i]
     print(paste0("Sample size: ", N))
-    cts_1 <- simulate_m_cross_sections(vl_pars1, ages, virus1_inc,obs_time=samp_time1,N=N,m=trials) %>% mutate(virus="Original variant")
-    cts_2 <- simulate_m_cross_sections(vl_pars1, ages, virus2_inc,obs_time=samp_time2,N=N,m=trials) %>% mutate(virus="New variant, same kinetics")
-    cts_2_alt <- simulate_m_cross_sections(vl_pars2, ages, virus2_inc,obs_time=samp_time2_alt,N=N,m=trials) %>% mutate(virus="New variant, different kinetics")
+    cts_1 <- simulate_m_cross_sections(vl_pars1, ages, virus1_inc,obs_time=samp_time1,N=N,m=trials,
+                                       grs=grs,align_gr=align_gr,gr_test=gr_test, virus="Original variant") %>% 
+      mutate(virus="Original variant")
+    cts_2 <- simulate_m_cross_sections(vl_pars1, ages, virus2_inc,obs_time=samp_time2,N=N,m=trials,
+                                       grs=grs,align_gr=align_gr,gr_test=gr_test,virus="New variant, same kinetics") %>% 
+      mutate(virus="New variant, same kinetics")
+    cts_2_alt <- simulate_m_cross_sections(vl_pars2, ages, virus2_inc,obs_time=samp_time2_alt,N=N,m=trials,
+                                           grs=grs,align_gr=align_gr,gr_test=gr_test,virus="New variant, different kinetics") %>% 
+      mutate(virus="New variant, different kinetics")
     cts_sim_comb <- bind_rows(cts_1,cts_2,cts_2_alt) %>% mutate(virus=factor(virus,levels=variant_levels))
     
     true_peak_diff <- vl_pars2["viral_peak"] - vl_pars1["viral_peak"]
@@ -453,7 +493,7 @@ p_sim_ct_compare_power <- function(vl_pars1,vl_pars2,virus1_inc,virus2_inc,
     all_results[[N]] <- results
   }
   all_results <- do.call("bind_rows",all_results)
-  all_results_summary <- all_results %>% group_by(comparison,samp_size) %>% summarize(prop_different=sum(signif)/n())
+  all_results_summary <- all_results %>% group_by(comparison,samp_size) %>% dplyr::summarize(prop_different=sum(signif)/n())
   
   all_results$comparison <- factor(all_results$comparison, levels=c("V2-V1,\nsame kinetics","V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))
   all_results_summary$comparison <- factor(all_results_summary$comparison, levels=c("V2-V1,\nsame kinetics","V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))
@@ -518,7 +558,7 @@ p_sim_ct_indiv_compare_power <- function(cts_indiv_comb,samp_time,trials=100,sam
     all_results[[N]] <- results
   }
   all_results <- do.call("bind_rows",all_results)
-  all_results_summary <- all_results %>% group_by(comparison,samp_size) %>% summarize(prop_different=sum(signif)/n())
+  all_results_summary <- all_results %>% group_by(comparison,samp_size) %>% dplyr::summarize(prop_different=sum(signif)/n())
   
   all_results$comparison <- factor(all_results$comparison, levels=c("V2-V1,\nsame kinetics","V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))
   all_results_summary$comparison <- factor(all_results_summary$comparison, levels=c("V2-V1,\nsame kinetics","V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))
@@ -574,7 +614,7 @@ p_sim_ct_compare_power_symp <- function(ct_dist_symptomatic_dat, samp_time,trial
     all_results[[N]] <- results
   }
   all_results <- do.call("bind_rows",all_results)
-  all_results_summary <- all_results %>% group_by(comparison,samp_size) %>% summarize(prop_different=sum(signif)/n())
+  all_results_summary <- all_results %>% group_by(comparison,samp_size) %>% dplyr::summarize(prop_different=sum(signif)/n())
   
   all_results$comparison <- factor(all_results$comparison, levels=c("V2-V1,\nsame kinetics","V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))
   all_results_summary$comparison <- factor(all_results_summary$comparison, levels=c("V2-V1,\nsame kinetics","V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))
@@ -593,6 +633,13 @@ p_sim_ct_compare_power_symp_regression <- function(ct_dist_symptomatic_dat, samp
   all_results <- list()
   all_results_wilcox <- list()
   
+  if("run" %in% colnames(ct_dist_symptomatic_dat)){
+    all_runs <- unique(ct_dist_symptomatic_dat$run)
+  } else {
+    ct_dist_symptomatic_dat$run <- 1
+    all_runs <- 1
+  }
+  
   for(i in seq_along(samp_sizes)){
     N <- samp_sizes[i]
     print(paste0("Sample size: ", N))
@@ -601,12 +648,15 @@ p_sim_ct_compare_power_symp_regression <- function(ct_dist_symptomatic_dat, samp
     results_wilcox <- list()
     
     for(j in 1:trials){
+      run_no <- sample(all_runs, 1)
+      
       ## Resample Ct values from the time range for each variant
-      v1_cts <- ct_dist_symptomatic_dat %>% filter(sampled_time >= samp_time1-(samp_window/2),sampled_time <= samp_time1+(samp_window/2),
+      v1_cts <- ct_dist_symptomatic_dat %>% filter(run==run_no,
+        sampled_time >= samp_time1-(samp_window/2),sampled_time <= samp_time1+(samp_window/2),
                                                    virus=="Original variant") %>% sample_n(N,replace=TRUE)
-      v2_cts <- ct_dist_symptomatic_dat %>% filter(sampled_time >= samp_time2-(samp_window/2),sampled_time <= samp_time2+(samp_window/2),
+      v2_cts <- ct_dist_symptomatic_dat %>% filter(run==run_no,sampled_time >= samp_time2-(samp_window/2),sampled_time <= samp_time2+(samp_window/2),
                                                    virus=="New variant, same kinetics") %>% sample_n(N,replace=TRUE)
-      v2_alt_cts <- ct_dist_symptomatic_dat %>% filter(sampled_time >= samp_time2_alt-(samp_window/2),sampled_time <= samp_time2_alt+(samp_window/2),
+      v2_alt_cts <- ct_dist_symptomatic_dat %>% filter(run==run_no,sampled_time >= samp_time2_alt-(samp_window/2),sampled_time <= samp_time2_alt+(samp_window/2),
                                                        virus=="New variant, different kinetics") %>% sample_n(N,replace=TRUE)
       
       
@@ -698,7 +748,7 @@ p_sim_ct_compare_power_symp_regression <- function(ct_dist_symptomatic_dat, samp
   
   ## Linear regression model results
   all_results <- do.call("bind_rows",all_results)
-  all_results_summary <- all_results %>% group_by(comparison,samp_size) %>% summarize(prop_correct=sum(correct)/n()) %>%
+  all_results_summary <- all_results %>% group_by(comparison,samp_size) %>% dplyr::summarize(prop_correct=sum(correct)/n()) %>%
     mutate(prop_different=ifelse(comparison == "V2-V1,\nsame kinetics",1-prop_correct,prop_correct))
   
   all_results$comparison <- factor(all_results$comparison, 
@@ -708,7 +758,7 @@ p_sim_ct_compare_power_symp_regression <- function(ct_dist_symptomatic_dat, samp
   
   ## Wilcoxon test results
   all_results_wilcox <- do.call("bind_rows",all_results_wilcox)
-  all_results_summary_wilcox <- all_results_wilcox %>% group_by(comparison,samp_size) %>% summarize(prop_different=sum(signif)/n())
+  all_results_summary_wilcox <- all_results_wilcox %>% group_by(comparison,samp_size) %>% dplyr::summarize(prop_different=sum(signif)/n())
   
   all_results_wilcox$comparison <- factor(all_results_wilcox$comparison, levels=c("V2-V1,\nsame kinetics","V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))
   all_results_summary_wilcox$comparison <- factor(all_results_summary_wilcox$comparison, levels=c("V2-V1,\nsame kinetics","V2-V1,\ndifferent kinetics","V2-V2,\ndifferent kinetics"))
@@ -735,6 +785,7 @@ p_compare_estimated_curves <- function(chain,ages=1:35,N=1000, nsamp=100,true_pa
   
   samps <- sample(chain$sampno,size=nsamp)
   modal_ct_all <- NULL
+  prop_detect_all <- NULL
   sim_cts_all <- NULL
   for(i in seq_along(samps)){
     samp <- samps[i]
@@ -758,11 +809,20 @@ p_compare_estimated_curves <- function(chain,ages=1:35,N=1000, nsamp=100,true_pa
     vl1 <- viral_load_func(pars_tmp, ages)
     vl2 <- viral_load_func(pars_tmp_variant, ages)
     
+    p_detect1 <- prop_detectable(ages[2:length(ages)], pars_tmp, vl1[2:length(ages)])
+    p_detect2 <- prop_detectable(ages[2:length(ages)], pars_tmp_variant, vl2[2:length(ages)])
     
     ## Modal Ct values
     modal_ct1 <- tibble(ct=vl1,age=ages,virus="Original variant")
     modal_ct2 <- tibble(ct=vl2,age=ages,virus="New variant")
     modal_ct_all[[i]] <- bind_rows(modal_ct1,modal_ct2) %>% mutate(virus=factor(virus,levels=variant_levels)) %>% mutate(samp=samp)
+    
+    
+    ## Modal Ct values
+    prop_detect1 <- tibble(p=p_detect1,age=ages[2:length(ages)],virus="Original variant")
+    prop_detect2 <- tibble(p=p_detect2,age=ages[2:length(ages)],virus="New variant")
+    prop_detect_all[[i]] <- bind_rows(prop_detect1,prop_detect2) %>% mutate(virus=factor(virus,levels=variant_levels)) %>% mutate(samp=samp)
+    
     
     ## Simulate Ct values
     sim_cts1 <- virosolver::simulate_viral_loads_example(ages,pars_tmp,N) %>% mutate(virus="Original variant")
@@ -771,14 +831,19 @@ p_compare_estimated_curves <- function(chain,ages=1:35,N=1000, nsamp=100,true_pa
   }
   
   modal_ct_all <- do.call("bind_rows",modal_ct_all)
+  prop_detect_all <- do.call("bind_rows",prop_detect_all)
   sim_cts_all <- do.call("bind_rows",sim_cts_all)
   
-  modal_ct_summaries <- modal_ct_all %>% group_by(age, virus) %>% summarize(mean_ct=mean(ct),lower_50=quantile(ct,0.25),upper_50=quantile(ct,0.75),
+  modal_ct_summaries <- modal_ct_all %>% group_by(age, virus) %>% dplyr::summarize(mean_ct=mean(ct),lower_50=quantile(ct,0.25),upper_50=quantile(ct,0.75),
                                                                             lower_95=quantile(ct,0.025),upper_95=quantile(ct,0.975))
+  
+  prop_detect_all_summaries <- prop_detect_all %>% group_by(age, virus) %>% dplyr::summarize(mean_ct=mean(p),lower_50=quantile(p,0.25),upper_50=quantile(p,0.75),
+                                                                                   lower_95=quantile(p,0.025),upper_95=quantile(p,0.975))
+  
   
   p <- ggplot(sim_cts_all %>% filter(ct < 40)) + 
     #geom_rect(ymin=42,ymax=vl_pars["intercept"],xmin=-1,xmax=max(ages)+1,fill="grey70",alpha=0.25) +
-    #geom_jitter(aes(x=age,y=ct,col=virus),alpha=0.25,height=0,width=0.25,size=0.2) + 
+    geom_jitter(aes(x=age,y=ct,col=virus),alpha=0.25,height=0,width=0.25,size=0.2) + 
     geom_ribbon(data=modal_ct_summaries,aes(x=age,ymin=lower_50,ymax=upper_50,fill=virus),alpha=0.5) +
     geom_ribbon(data=modal_ct_summaries,aes(x=age,ymin=lower_95,ymax=upper_95,fill=virus),alpha=0.1) +
     geom_line(data=modal_ct_summaries,aes(x=age,y=mean_ct,col=virus)) +
@@ -789,22 +854,32 @@ p_compare_estimated_curves <- function(chain,ages=1:35,N=1000, nsamp=100,true_pa
     xlab("Time since infection") + ylab("Ct value") +
     theme_overall + theme_nice_axes + theme(legend.position=c(0.7,0.8))
   
+  p2 <- ggplot(prop_detect_all_summaries) + 
+    geom_ribbon(aes(x=age,ymin=lower_50,ymax=upper_50,fill=virus),alpha=0.5) +
+    geom_ribbon(aes(x=age,ymin=lower_95,ymax=upper_95,fill=virus),alpha=0.1) +
+    geom_line(aes(x=age,y=mean_ct,col=virus)) +
+    scale_x_continuous(breaks=seq(0, max(ages),by=5)) +
+    variant_color_scale + variant_fill_scale +
+    xlab("Time since infection") + ylab("Prop detectable") +
+    theme_overall + theme_nice_axes + theme(legend.position=c(0.7,0.8))
+  
   if(!is.null(true_pars1)){
     p <- p +
       geom_line(data=true_modal_cts,aes(x=age,y=ct,col=virus),linetype="dashed")
   }
   
-  return(p)
+  return(p/p2)
 }
 
 
-plot_virosolver_comparisons <- function(chain, true_vals, real_scales, real_v1_gr, real_v2_gr){
+plot_virosolver_comparisons <- function(chain, true_vals=NULL, real_scales=NULL, real_v1_gr=NULL, real_v2_gr=NULL, 
+                                        inc_func=virosolver::exponential_growth_model,times=0:35){
   chain$beta_diff <- chain$beta_alt - chain$beta
   chain_grs <- chain %>% dplyr::select(sampno, beta, beta_alt,beta_diff) %>% pivot_longer(-sampno)
   gr_key <- c("beta"="Original variant","beta_alt"="New variant", "beta_diff"="Difference")
   chain_grs$name <- gr_key[chain_grs$name]
   chain_grs$name <- factor(chain_grs$name,levels=c("Original variant","New variant","Difference"))
- 
+
   p1 <- ggplot(chain_grs) + 
     geom_hline(yintercept=0,linetype="dashed")+
     geom_violin(aes(x=name,y=value,fill=name),alpha=0.5,draw_quantiles=c(0.025,0.5,0.975)) + 
@@ -829,44 +904,58 @@ plot_virosolver_comparisons <- function(chain, true_vals, real_scales, real_v1_g
     ylab("Relative value of new variant") +
     xlab("")
   
-  
-  v1_preds <- virosolver::plot_prob_infection(chain, 1000,exponential_growth_model, 0:35,true_prob_infection = real_v1_gr)
-  v1_preds_quants <- v1_preds$predictions %>% group_by(t) %>% summarize(lower95=quantile(prob_infection,0.025),lower50=quantile(prob_infection,0.25),
+  v1_preds <- virosolver::plot_prob_infection(chain, 1000,inc_func, times,true_prob_infection = real_v1_gr)
+  v1_preds_quants <- v1_preds$predictions %>% group_by(t) %>% dplyr::summarize(lower95=quantile(prob_infection,0.025),lower50=quantile(prob_infection,0.25),
                                                                         median=median(prob_infection),
                                                                         upper50=quantile(prob_infection,0.75),upper95=quantile(prob_infection,0.975)) 
   p_v1_preds <- ggplot(v1_preds_quants) + 
     geom_ribbon(aes(x=t,ymin=lower95,ymax=upper95),fill="blue",alpha=0.1) +
     geom_ribbon(aes(x=t,ymin=lower50,ymax=upper50),fill="blue",alpha=0.5) +
     geom_line(aes(x=t,y=median),col="blue") +
-    geom_line(data=real_v1_gr,aes(x=t,y=prob_infection),linetype="dashed",col="black",size=0.75) +
     scale_y_continuous(limits=c(0,0.25)) +
     theme_overall +
     ylab("Original variant growth rate") +
     theme_no_x_axis
   
+  if(!is.null(real_v1_gr)){
+    p_v1_preds <- p_v1_preds + 
+      geom_line(data=real_v1_gr,aes(x=t,y=prob_infection),linetype="dashed",col="black",size=0.75)
+  } 
+  
   chain1 <- chain
   chain1$beta <- chain1$beta_alt
-  v2_preds <- virosolver::plot_prob_infection(chain1, 1000,exponential_growth_model, 0:35,true_prob_infection = real_v2_gr)
-  v2_preds_quants <- v2_preds$predictions %>% group_by(t) %>% summarize(lower95=quantile(prob_infection,0.025),lower50=quantile(prob_infection,0.25),
+
+  if("prob" %in% colnames(chain1)){
+    chain1[,which(colnames(chain1) == "prob")] <- chain1[,which(colnames(chain1)=="prob_alt")]
+  }
+  
+  v2_preds <- virosolver::plot_prob_infection(chain1, 1000,inc_func, times,true_prob_infection = real_v2_gr)
+  v2_preds_quants <- v2_preds$predictions %>% group_by(t) %>% dplyr::summarize(lower95=quantile(prob_infection,0.025),lower50=quantile(prob_infection,0.25),
                                                                         median=median(prob_infection),
                                                                         upper50=quantile(prob_infection,0.75),upper95=quantile(prob_infection,0.975)) 
   p_v2_preds <- ggplot(v2_preds_quants) + 
     geom_ribbon(aes(x=t,ymin=lower95,ymax=upper95),fill="red",alpha=0.1) +
     geom_ribbon(aes(x=t,ymin=lower50,ymax=upper50),fill="red",alpha=0.5) +
     geom_line(aes(x=t,y=median),col="red") +
-    geom_line(data=real_v2_gr,aes(x=t,y=prob_infection),linetype="dashed",col="black",size=0.75) +
     scale_y_continuous(limits=c(0,0.25)) +
     theme_overall+
     ylab("New variant growth rate") +
     xlab("Time (35 days prior to sample)")
   
+  if(!is.null(real_v2_gr)){
+    p_v2_preds <- p_v2_preds + 
+      geom_line(data=real_v2_gr,aes(x=t,y=prob_infection),linetype="dashed",col="black",size=0.75)
+  }
+   
   v1_preds_quants$virus <- "Original variant"
   v2_preds_quants$virus <- "New variant"
   
   v_preds_comb <- bind_rows(v1_preds_quants,v2_preds_quants)
   
-  real_grs_comb <- bind_rows(real_v1_gr %>% mutate(virus="Original variant"),
-                             real_v2_gr %>% mutate(virus="New variant"))
+  if(!is.null(real_v1_gr)){
+    real_grs_comb <- bind_rows(real_v1_gr %>% mutate(virus="Original variant"),
+                               real_v2_gr %>% mutate(virus="New variant"))
+  }
   
   
   p_comb_preds <- ggplot(v_preds_comb) + 
@@ -874,7 +963,6 @@ plot_virosolver_comparisons <- function(chain, true_vals, real_scales, real_v1_g
     geom_ribbon(aes(x=t,ymin=lower50,ymax=upper50,fill=virus),alpha=0.5) +
     geom_line(aes(x=t,y=median,col=virus,linetype="Mean estimate")) +
     variant_color_scale_min + variant_fill_scale_min +
-    geom_line(data=real_grs_comb,aes(x=t,y=prob_infection,col=virus,linetype="True value"),size=0.75) +
     scale_linetype_manual(name="",values=c("True value"="dashed","Mean estimate"="solid")) +
     #geom_line(data=real_v2_gr,aes(x=t,y=prob_infection),linetype="dashed",col="black",size=0.75) +
     theme_overall+
@@ -884,6 +972,12 @@ plot_virosolver_comparisons <- function(chain, true_vals, real_scales, real_v1_g
     scale_x_continuous(breaks=seq(0,35,by=5),labels=rev(0-seq(0,35,by=5))) +
     ylab("Relative probability of infection") +
     xlab("Days (relative to sample date)")
+  
+  
+  if(!is.null(real_v1_gr)){
+    p_comb_preds <- p_comb_preds + 
+      geom_line(data=real_grs_comb,aes(x=t,y=prob_infection,col=virus,linetype="True value"),size=0.75)
+  }
   
   return(p_comb_preds)
 }
@@ -950,3 +1044,104 @@ plot_time_since_infection <- function(obs_times, vl_pars1, vl_pars2, prob_infect
     theme(legend.position=c(0.8,0.8))
   p
 }
+
+## Plots the outputs of an odin model and extracts the model states over time
+plot_odin_output <- function(x, odin_model){
+  S_ini <- odin_model$pars()$S_ini
+  n_runs <- odin_model$n_particles()
+  dt <- odin_model$pars()$dt
+  n_strains <- odin_model$info()$dim$E[1]/2
+  k_E <- odin_model$info()$dim$E[2]
+  k_I <- odin_model$info()$dim$I[2]
+  col_names <- names(unlist(odin_model$info()$index))
+  x_reshaped <- reshape2::melt(x)
+  colnames(x_reshaped) <- c("variable","run","time","values")
+  x_reshaped$variable <- col_names[x_reshaped$variable]
+  x_reshaped <- x_reshaped %>% dplyr::filter(variable != "time") %>% as_tibble()
+  x_reshaped <- x_reshaped %>% mutate(time_days=time * dt, time_days_floor=floor(time_days))
+  ## 1 is primary infection 1
+  ## 2 is primary infection 2
+  ## 3 is 1->2
+  ## 4 is 2->1
+  
+  E_names <- rep("E",length(odin_model$info()$index$E))
+  E_stages <- rep(seq(1:k_E), each=length(odin_model$info()$index$E)/k_E)
+  E_strains <- rep(c(1:n_strains, expand_grid(x=1:n_strains,y=1:n_strains) %>% 
+                       dplyr::filter(x!=y) %>% rowwise %>% mutate(comb=paste0(x,"->",y)) %>% 
+                       pull(comb)), k_E)
+  E_names_dat <- tibble(variable=paste0("E",seq(1,length(E_names),by=1)),
+                        compartment=E_names, stage=E_stages, strain=E_strains)
+  
+  I_names <- rep("I",length(odin_model$info()$index$I))
+  I_stages <- rep(seq(1:k_I), each=length(odin_model$info()$index$I)/k_I)
+  I_strains <- rep(c(1:n_strains, expand_grid(x=1:n_strains,y=1:n_strains) %>% 
+                       dplyr::filter(x!=y) %>% rowwise %>% mutate(comb=paste0(x,"->",y)) %>% 
+                       pull(comb)), k_I)
+  I_names_dat <- tibble(variable=paste0("I",seq(1,length(I_names),by=1)),
+                        compartment=I_names, stage=I_stages, strain=I_strains)
+  
+  R_names <- rep("R",length(odin_model$info()$index$R))
+  R_stages <- rep(1, length(odin_model$info()$index$R))
+  R_strains <- c(1:n_strains, expand_grid(x=1:n_strains,y=1:n_strains) %>% 
+                   dplyr::filter(x!=y) %>% rowwise %>% mutate(comb=paste0(x,"->",y)) %>% 
+                   pull(comb))
+  R_names_dat <- tibble(variable=paste0("R",seq(1,length(R_names),by=1)),
+                        compartment=R_names, stage=R_stages, strain=R_strains)
+  
+  inc_names <- rep("obs_inc",length(odin_model$info()$index$obs_inc))
+  inc_stages <- rep(1, length(odin_model$info()$index$obs_inc))
+  inc_strains <- c(1:n_strains, expand_grid(x=1:n_strains,y=1:n_strains) %>% 
+                     dplyr::filter(x!=y) %>% rowwise %>% mutate(comb=paste0(x,"->",y)) %>% 
+                     pull(comb))
+  
+  inc_names_dat <- tibble(variable=paste0("obs_inc",seq(1,length(inc_names),by=1)),
+                          compartment=inc_names, stage=inc_stages, 
+                          strain=inc_strains)
+  
+  lambda_names <- rep("obs_lambda",length(odin_model$info()$index$obs_lambda))
+  lambda_stages <- rep(1, length(odin_model$info()$index$obs_lambda))
+  lambda_strains <- as.character(c(1:n_strains))#, expand_grid(x=1:n_strains,y=1:n_strains) %>% 
+                     #dplyr::filter(x!=y) %>% rowwise %>% mutate(comb=paste0(x,"->",y)) %>% 
+                     #pull(comb))
+  
+  lambda_names_dat <- tibble(variable=paste0("obs_lambda",seq(1,length(lambda_names),by=1)),
+                          compartment=lambda_names, stage=lambda_stages, 
+                          strain=lambda_strains)
+  
+  
+  S_names_dat <- tibble(variable="S",compartment="S",stage=1,strain=NA)
+  beta_names_dat <- tibble(variable="beta_out",compartment="beta",stage=1,strain=NA)
+  
+  all_names <- bind_rows(E_names_dat, I_names_dat, R_names_dat, inc_names_dat,
+                         S_names_dat, beta_names_dat,lambda_names_dat)
+  clean_dat <- x_reshaped %>% left_join(all_names)
+  
+  clean_dat1_beta <- clean_dat %>% filter(compartment == "beta") %>%
+    group_by(run, compartment, strain, time_days_floor) %>% 
+    summarize(y=mean(values)/dt) %>% rename(time=time_days_floor)
+  
+  clean_dat1 <- clean_dat %>% filter(compartment != "beta") %>%
+    group_by(run, compartment, strain, time_days_floor) %>% 
+    summarize(y=sum(values)) %>% rename(time=time_days_floor)
+  
+  clean_dat1 <- bind_rows(clean_dat1_beta, clean_dat1)
+  
+  strain_key <- c("1"="Original variant","2"="New variant",
+                  "1->2"="Reinfection (original->new)",
+                  "2->1"="Reinfection (new->original)")
+  clean_dat1$strain <- strain_key[clean_dat1$strain]
+  
+  clean_dat1_comb <- clean_dat1 %>% 
+    group_by(compartment, strain, time) %>% 
+    summarize(mean_y=mean(y))
+  p_inc <- ggplot() + 
+    geom_line(data=clean_dat1 %>% dplyr::filter(compartment=="obs_inc"),
+              aes(x=time,y=y/S_ini,col=strain,group=interaction(strain,run),linetype=strain),size=0.1,alpha=0.1) +
+    geom_line(data=clean_dat1_comb%>% dplyr::filter(compartment=="obs_inc"),
+              aes(x=time,y=mean_y/S_ini,col=strain,linetype=strain),size=0.75) +
+    theme_bw()
+  
+  return(list("plot"=p_inc,"dat"=clean_dat1))
+  
+}
+
